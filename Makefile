@@ -93,6 +93,8 @@ TESTS += test_mem
 deps_test_mem := src/info/mem.c
 TESTS += test_acpi
 deps_test_acpi := src/info/acpi.c src/lib/fmt.c
+TESTS += test_smbios
+deps_test_smbios := src/info/smbios.c src/lib/fmt.c
 # (add "TESTS += test_x" and "deps_test_x := ..." lines above this comment)
 
 define TEST_RULE
