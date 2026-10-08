@@ -87,7 +87,8 @@ fail:
 bool input_poll(struct key_event *out) {
     if (!present)
         return false;
-    while (inb(PS2_STATUS) & ST_OUT_FULL) {
+    // Bounded so a wedged controller (OUT_FULL stuck on) cannot freeze the UI.
+    for (int i = 0; i < 32 && (inb(PS2_STATUS) & ST_OUT_FULL); i++) {
         if (ps2_decode(&decoder, inb(PS2_DATA), out))
             return true;
     }

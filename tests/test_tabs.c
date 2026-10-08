@@ -45,6 +45,9 @@ static void test_cpu(void) {
     c.tsc_source = TSC_SRC_PIT;
     tab_cpu_build(&p, &c, 76);
     CHECK_STR(find_line(&p, "TSC") + 16, "~3696.000 MHz (PIT calibrated)");
+    c.tsc_source = TSC_SRC_CPUID_BASE;
+    tab_cpu_build(&p, &c, 76);
+    CHECK_STR(find_line(&p, "TSC") + 16, "~3696.000 MHz (CPUID base clock)");
 }
 
 static void test_mem(void) {
@@ -114,6 +117,18 @@ static void test_fw(void) {  // Review Focus #5
     CHECK_STR(p.title, "Firmware");
     CHECK_STR(find_line(&p, "Firmware") + 16, "unknown");
     CHECK_EQ(count_style(&p, STYLE_WARN), 3);  // EDID, SMBIOS and ACPI all missing
+    f.acpi.rsdp_invalid = true;
+    tab_fw_build(&p, &f);
+    CHECK_STR(find_line(&p, "RSDP"), "RSDP from bootloader has a bad signature");
+    f.acpi.rsdp_invalid = false;
+
+    f.smbios.present = true;  // empty strings collapse to a single dash
+    tab_fw_build(&p, &f);
+    CHECK_STR(find_line(&p, "Board") + 16, "-");
+    strcpy(f.smbios.board_vendor, "ASUSTeK");
+    tab_fw_build(&p, &f);
+    CHECK_STR(find_line(&p, "Board") + 16, "ASUSTeK");
+    f.smbios.present = false;
 
     f.firmware_type = LIMINE_FIRMWARE_TYPE_EFI64;
     f.acpi.present = true;

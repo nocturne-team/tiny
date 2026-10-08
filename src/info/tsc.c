@@ -16,7 +16,7 @@ static uint64_t pit_calibrate(void) {
     outb(0x42, count >> 8);
     uint64_t t0 = rdtsc();
     for (uint32_t spins = 0; !(inb(0x61) & 0x20); spins++) {
-        if (spins > 5000000) {  // no PIT on this machine
+        if (spins > 200000) {  // ~0.2-0.4 s: no working PIT on this machine
             outb(0x61, p61);
             return 0;
         }
@@ -44,7 +44,7 @@ void tsc_init(void) {
             uint32_t mhz = cpuid(0x16, 0).eax & 0xFFFF;
             if (mhz) {
                 hz = (uint64_t)mhz * 1000000;
-                source = TSC_SRC_CPUID;
+                source = TSC_SRC_CPUID_BASE;
             }
         }
         if (!hz) {

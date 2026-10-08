@@ -133,16 +133,29 @@ static void test_truncation(void) {
     fix_csum(arena, 20, 8);
     acpi_parse(arena, hhdm(), NULL, &a);
     CHECK(a.truncated);
+    CHECK_EQ(a.table_count, ACPI_MAX_TABLES - 2);  // two slots kept for FACP and DSDT
+
+    // A FADT beyond the display cap is still found, and so is its DSDT.
+    put32(rsdt + 36 + 4 * 99, (uint32_t)phys(256));
+    fix_csum(rsdt, 36 + 400, 9);
+    acpi_parse(arena, hhdm(), NULL, &a);
+    CHECK(a.truncated);
     CHECK_EQ(a.table_count, ACPI_MAX_TABLES);
+    CHECK(acpi_find(&a, "FACP") != NULL);
+    CHECK(acpi_find(&a, "DSDT") != NULL);
 }
 
 static void test_missing(void) {
     acpi_parse(NULL, 0, NULL, &a);
     CHECK(!a.present);
     memset(arena, 0, sizeof arena);
+    arena[0] = 'X';  // a pointer was given but it is not an RSDP
     acpi_parse(arena, hhdm(), NULL, &a);
     CHECK(!a.present);
+    CHECK(a.rsdp_invalid);
     CHECK(acpi_find(&a, "FACP") == NULL);
+    acpi_parse(NULL, 0, NULL, &a);
+    CHECK(!a.rsdp_invalid);
 }
 
 static void test_sanitize(void) {
@@ -181,6 +194,46 @@ static void test_unmapped_tables(void) {
     CHECK_EQ(a.table_count, 1);
     CHECK(a.tables[0].mapped);
     CHECK(!a.tables[0].checksum_ok);
+}
+
+static void test_fadt(void) {
+    struct acpi_fadt f;
+    build(2);
+    uint8_t *facp = arena + 256;
+    put32(facp + 48, 0xB2);  // SMI_CMD
+    facp[52] = 0xF1;         // ACPI_ENABLE
+    put32(facp + 64, 0x604); // PM1a_CNT
+    put32(facp + 112, 1u << 10);  // RESET_REG_SUP
+    facp[116] = 1;                // reset register in system I/O
+    put64(facp + 120, 0xCF9);
+    facp[128] = 0x06;
+    fix_csum(facp, 276, 9);
+    acpi_parse(arena, hhdm(), NULL, &a);
+    CHECK(acpi_parse_fadt(&a, &f));
+    CHECK_EQ(f.smi_cmd, 0xB2);
+    CHECK_EQ(f.acpi_enable, 0xF1);
+    CHECK_EQ(f.pm1a_cnt, 0x604);
+    CHECK_EQ(f.pm1b_cnt, 0);
+    CHECK(f.reset_io);
+    CHECK_EQ(f.reset_port, 0xCF9);
+    CHECK_EQ(f.reset_value, 0x06);
+
+    // Legacy PM1a_CNT is 0: fall back to X_PM1a_CNT_BLK when it is in I/O space.
+    put32(facp + 64, 0);
+    facp[172] = 1;
+    put64(facp + 176, 0x1804);
+    facp[184] = 0;           // X_PM1b in memory space: ignored
+    put64(facp + 188, 0xfee00000);
+    put32(facp + 112, 0);    // no reset register
+    fix_csum(facp, 276, 9);
+    acpi_parse(arena, hhdm(), NULL, &a);
+    CHECK(acpi_parse_fadt(&a, &f));
+    CHECK_EQ(f.pm1a_cnt, 0x1804);
+    CHECK_EQ(f.pm1b_cnt, 0);
+    CHECK(!f.reset_io);
+
+    acpi_parse(NULL, 0, NULL, &a);
+    CHECK(!acpi_parse_fadt(&a, &f));
 }
 
 static void test_s5(void) {
@@ -232,6 +285,7 @@ int main(void) {
     test_missing();
     test_sanitize();
     test_unmapped_tables();
+    test_fadt();
     test_s5();
     TEST_MAIN_END();
 }

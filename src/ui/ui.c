@@ -132,7 +132,9 @@ static void draw_content(void) {
 }
 
 static void draw_footer(void) {
-    const char *msg = "\x1b\x1a/F1-F5 tab  \x18\x19 PgUp/PgDn Home/End scroll  R reboot  S shut down";
+    const char *msg = cols >= 72
+        ? "\x1b\x1a/F1-F5 tab  \x18\x19 PgUp/PgDn Home/End scroll  R reboot  S shut down"
+        : "\x1b\x1a tab  \x18\x19 scroll  R reboot  S off";
     uint8_t attr = A_TEXT;
     if (pending == 'r') {
         msg = "Press R again to REBOOT - any other key cancels";

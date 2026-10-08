@@ -26,7 +26,20 @@ static bool read_raw(struct rtc_raw *r) {
     return true;
 }
 
+static bool rtc_read_once(struct datetime *out, uint8_t *reg_b);
+static int failures;  // consecutive failed reads
+
 bool rtc_read(struct datetime *out, uint8_t *reg_b) {
+    // Machines without a CMOS RTC float to 0xFF; each attempt spins on the
+    // update flag, so give up after a few so the UI clock does not stall input.
+    if (failures >= 3)
+        return false;
+    bool ok = rtc_read_once(out, reg_b);
+    failures = ok ? 0 : failures + 1;
+    return ok;
+}
+
+static bool rtc_read_once(struct datetime *out, uint8_t *reg_b) {
     struct rtc_raw a, b;
     // Read until two consecutive reads agree, so we never see a half-updated clock.
     for (int tries = 0; tries < 5; tries++) {

@@ -47,5 +47,10 @@ size_t cpu_feature_names(const struct cpu_feature_regs *r, const char **names, s
 // Decodes one CPUID leaf 4 / 0x8000001D subleaf; false for the terminating entry.
 bool cpu_decode_cache(uint32_t eax, uint32_t ebx, uint32_t ecx, struct cache_desc *out);
 
+// Pre-Zen AMD fallback: L1d/L1i from leaf 0x80000005 ECX/EDX, L2/L3 from 0x80000006
+// ECX/EDX. Zero-sized caches are skipped. Returns the number written (<= max).
+size_t cpu_decode_amd_legacy_caches(uint32_t l5_ecx, uint32_t l5_edx, uint32_t l6_ecx, uint32_t l6_edx,
+                                    struct cache_desc *out, size_t max);
+
 // Hardware probe (cpu.c). Call after tsc_init().
 void cpu_probe(struct cpu_info *out);

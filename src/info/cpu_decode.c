@@ -72,3 +72,18 @@ bool cpu_decode_cache(uint32_t eax, uint32_t ebx, uint32_t ecx, struct cache_des
     out->size = line * parts * ways * sets;
     return true;
 }
+
+size_t cpu_decode_amd_legacy_caches(uint32_t l5_ecx, uint32_t l5_edx, uint32_t l6_ecx, uint32_t l6_edx,
+                                    struct cache_desc *out, size_t max) {
+    const struct cache_desc all[4] = {
+        { 1, CACHE_DATA, (uint64_t)(l5_ecx >> 24) << 10 },
+        { 1, CACHE_INSN, (uint64_t)(l5_edx >> 24) << 10 },
+        { 2, CACHE_UNIFIED, (uint64_t)(l6_ecx >> 16) << 10 },
+        { 3, CACHE_UNIFIED, (uint64_t)(l6_edx >> 18) << 19 },
+    };
+    size_t n = 0;
+    for (size_t i = 0; i < 4 && n < max; i++)
+        if (all[i].size)
+            out[n++] = all[i];
+    return n;
+}

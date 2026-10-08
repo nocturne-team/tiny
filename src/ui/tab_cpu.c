@@ -15,6 +15,7 @@ static const char *tsc_source_name(enum tsc_source s) {
     switch (s) {
     case TSC_SRC_LIMINE: return "from Limine";
     case TSC_SRC_CPUID: return "from CPUID";
+    case TSC_SRC_CPUID_BASE: return "CPUID base clock";
     case TSC_SRC_PIT: return "PIT calibrated";
     default: return "unknown";
     }
@@ -36,7 +37,7 @@ void tab_cpu_build(struct page *p, const struct cpu_info *c, size_t width) {
     else
         page_kv(p, "Logical CPUs", "unknown (no MP response)");
     if (c->tsc_hz)
-        page_kv(p, "TSC", "%s%lu.%03lu MHz (%s)", c->tsc_source == TSC_SRC_PIT ? "~" : "",
+        page_kv(p, "TSC", "%s%lu.%03lu MHz (%s)", (c->tsc_source == TSC_SRC_PIT || c->tsc_source == TSC_SRC_CPUID_BASE) ? "~" : "",
                 (unsigned long)(c->tsc_hz / 1000000), (unsigned long)(c->tsc_hz / 1000 % 1000),
                 tsc_source_name(c->tsc_source));
     else

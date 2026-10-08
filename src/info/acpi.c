@@ -2,6 +2,7 @@
 #include "lib/fmt.h"
 
 #define HEADER_LEN 36
+#define MAX_ROOT_ENTRIES 4096
 
 bool acpi_checksum(const void *p, size_t len) {
     const uint8_t *b = p;
@@ -44,8 +45,12 @@ static bool add_table(struct acpi_info *out, uint64_t phys, uint64_t hhdm, const
 void acpi_parse(const void *rsdp_v, uint64_t hhdm, const struct phys_ranges *m, struct acpi_info *out) {
     memset(out, 0, sizeof *out);
     const uint8_t *rsdp = rsdp_v;
-    if (!rsdp || memcmp(rsdp, "RSD PTR ", 8) != 0)
+    if (!rsdp)
         return;
+    if (memcmp(rsdp, "RSD PTR ", 8) != 0) {
+        out->rsdp_invalid = true;
+        return;
+    }
 
     out->present = true;
     out->revision = rsdp[15];
@@ -68,12 +73,23 @@ void acpi_parse(const void *rsdp_v, uint64_t hhdm, const struct phys_ranges *m, 
         return;
 
     const uint8_t *base = root->ptr;
+    // The last two slots are kept for the FADT and DSDT, which power management
+    // needs even when a server lists more tables than we can show.
     size_t n = (root->length - HEADER_LEN) / entry_size;
+    if (n > MAX_ROOT_ENTRIES)
+        n = MAX_ROOT_ENTRIES;
     for (size_t i = 0; i < n; i++) {
         const uint8_t *e = base + HEADER_LEN + i * entry_size;
         uint64_t phys = entry_size == 8 ? acpi_rd64(e) : acpi_rd32(e);
-        if (phys && !add_table(out, phys, hhdm, m))
-            break;
+        if (!phys)
+            continue;
+        if (out->table_count >= ACPI_MAX_TABLES - 2) {
+            out->truncated = true;
+            if (out->table_count == ACPI_MAX_TABLES - 1 || acpi_find(out, "FACP") ||
+                !phys_ok(m, phys, HEADER_LEN) || memcmp(virt(phys, hhdm), "FACP", 4) != 0)
+                continue;
+        }
+        add_table(out, phys, hhdm, m);
     }
 
     // The DSDT is referenced from the FADT rather than from the root table.
@@ -93,6 +109,29 @@ const struct acpi_table *acpi_find(const struct acpi_info *info, const char *sig
         if (info->tables[i].readable && memcmp(info->tables[i].sig, sig, 5) == 0)
             return &info->tables[i];
     return NULL;
+}
+
+bool acpi_parse_fadt(const struct acpi_info *info, struct acpi_fadt *out) {
+    memset(out, 0, sizeof *out);
+    const struct acpi_table *t = acpi_find(info, "FACP");
+    if (!t || t->length < 72)
+        return false;
+    const uint8_t *f = t->ptr;
+    out->smi_cmd = (uint16_t)acpi_rd32(f + 48);
+    out->acpi_enable = f[52];
+    out->pm1a_cnt = (uint16_t)acpi_rd32(f + 64);
+    out->pm1b_cnt = (uint16_t)acpi_rd32(f + 68);
+    // ACPI 2.0+ X_PM1a/b_CNT_BLK generic address structures (space 1 = system I/O).
+    if (!out->pm1a_cnt && t->length >= 184 && f[172] == 1)
+        out->pm1a_cnt = (uint16_t)acpi_rd64(f + 176);
+    if (!out->pm1b_cnt && t->length >= 196 && f[184] == 1)
+        out->pm1b_cnt = (uint16_t)acpi_rd64(f + 188);
+    if (t->length >= 129 && (acpi_rd32(f + 112) & (1u << 10)) && f[116] == 1) {
+        out->reset_io = true;
+        out->reset_port = (uint16_t)acpi_rd64(f + 120);
+        out->reset_value = f[128];
+    }
+    return true;
 }
 
 static bool s5_element(const uint8_t *aml, size_t len, size_t *p, uint8_t *val) {

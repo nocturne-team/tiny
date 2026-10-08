@@ -6,6 +6,13 @@ static const char *dash(const char *s) {
     return s[0] ? s : "-";
 }
 
+// "a b", "a", "b" or "-" for two optional strings.
+static void pair(char *buf, size_t cap, const char *a, const char *b) {
+    ksnprintf(buf, cap, "%s%s%s", a, a[0] && b[0] ? " " : "", b);
+    if (!buf[0])
+        ksnprintf(buf, cap, "-");
+}
+
 static const char *firmware_name(int type) {
     switch (type) {
     case LIMINE_FIRMWARE_TYPE_X86BIOS: return "BIOS";
@@ -72,14 +79,21 @@ void tab_fw_build(struct page *p, const struct fw_info *f) {
         page_kv(p, "BIOS vendor", "%s", dash(s->bios_vendor));
         page_kv(p, "BIOS version", "%s", dash(s->bios_version));
         page_kv(p, "BIOS date", "%s", dash(s->bios_date));
-        page_kv(p, "System", "%s %s", dash(s->sys_vendor), dash(s->sys_product));
+        char both[100];
+        pair(both, sizeof both, s->sys_vendor, s->sys_product);
+        page_kv(p, "System", "%s", both);
         page_kv(p, "System version", "%s", dash(s->sys_version));
-        page_kv(p, "Board", "%s %s", dash(s->board_vendor), dash(s->board_product));
+        pair(both, sizeof both, s->board_vendor, s->board_product);
+        page_kv(p, "Board", "%s", both);
     }
 
     page_blank(p);
     page_add(p, STYLE_HEAD, "ACPI");
     const struct acpi_info *a = &f->acpi;
+    if (a->rsdp_invalid) {
+        page_add(p, STYLE_WARN, "RSDP from bootloader has a bad signature");
+        return;
+    }
     if (!a->present) {
         page_add(p, STYLE_WARN, "Not provided by bootloader");
         return;

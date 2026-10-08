@@ -6,16 +6,9 @@
 #include "info/acpi.h"
 #include "lib/serial.h"
 
-static struct {
-    uint16_t smi_cmd;
-    uint8_t acpi_enable;
-    uint16_t pm1a_cnt, pm1b_cnt;
-    bool reset_io;
-    uint16_t reset_port;
-    uint8_t reset_value;
-    bool s5;
-    uint8_t slp_typa, slp_typb;
-} pw;
+static struct acpi_fadt fadt;
+static bool s5;
+static uint8_t slp_typa, slp_typb;
 
 static void delay_ms(unsigned ms) {
     for (unsigned i = 0; i < ms * 1000; i++)
@@ -23,34 +16,19 @@ static void delay_ms(unsigned ms) {
 }
 
 void power_init(const struct acpi_info *acpi) {
-    const struct acpi_table *fadt = acpi_find(acpi, "FACP");
-    if (fadt) {
-        const uint8_t *f = fadt->ptr;
-        if (fadt->length >= 72) {
-            pw.smi_cmd = (uint16_t)acpi_rd32(f + 48);
-            pw.acpi_enable = f[52];
-            pw.pm1a_cnt = (uint16_t)acpi_rd32(f + 64);
-            pw.pm1b_cnt = (uint16_t)acpi_rd32(f + 68);
-        }
-        // RESET_REG_SUP (flags bit 10) with the reset register in system I/O space.
-        if (fadt->length >= 129 && (acpi_rd32(f + 112) & (1u << 10)) && f[116] == 1) {
-            pw.reset_io = true;
-            pw.reset_port = (uint16_t)acpi_rd64(f + 120);
-            pw.reset_value = f[128];
-        }
-    }
+    acpi_parse_fadt(acpi, &fadt);
     const struct acpi_table *dsdt = acpi_find(acpi, "DSDT");
     if (dsdt && dsdt->length > 36)
-        pw.s5 = acpi_find_s5((const uint8_t *)dsdt->ptr + 36, dsdt->length - 36, &pw.slp_typa, &pw.slp_typb);
-    klog("power: PM1a_CNT 0x%x, S5 %s, reset register %s", pw.pm1a_cnt,
-         pw.s5 ? "found" : "missing", pw.reset_io ? "I/O" : "none");
+        s5 = acpi_find_s5((const uint8_t *)dsdt->ptr + 36, dsdt->length - 36, &slp_typa, &slp_typb);
+    klog("power: PM1a_CNT 0x%x, S5 %s, reset register %s", fadt.pm1a_cnt,
+         s5 ? "found" : "missing", fadt.reset_io ? "I/O" : "none");
 }
 
 void power_reboot(void) {
     klog("power: rebooting");
-    if (pw.reset_io) {
-        klog("power: ACPI reset register 0x%x <- 0x%x", pw.reset_port, pw.reset_value);
-        outb(pw.reset_port, pw.reset_value);
+    if (fadt.reset_io) {
+        klog("power: ACPI reset register 0x%x <- 0x%x", fadt.reset_port, fadt.reset_value);
+        outb(fadt.reset_port, fadt.reset_value);
         delay_ms(100);
     }
     klog("power: 8042 reset pulse");
@@ -67,23 +45,31 @@ void power_reboot(void) {
 }
 
 static void enter_acpi_mode(void) {
-    if (inw(pw.pm1a_cnt) & 1)
+    if (inw(fadt.pm1a_cnt) & 1)
         return;  // SCI_EN already set
-    if (!pw.smi_cmd || !pw.acpi_enable)
+    if (!fadt.smi_cmd || !fadt.acpi_enable)
         return;
-    outb(pw.smi_cmd, pw.acpi_enable);
-    for (int i = 0; i < 300 && !(inw(pw.pm1a_cnt) & 1); i++)
+    outb(fadt.smi_cmd, fadt.acpi_enable);
+    for (int i = 0; i < 300 && !(inw(fadt.pm1a_cnt) & 1); i++)
         delay_ms(1);
+}
+
+// Like ACPICA: keep the other PM1_CNT bits, write SLP_TYP first, then SLP_EN.
+static void sleep_s5(uint16_t port, uint8_t typ) {
+    uint16_t v = (uint16_t)(inw(port) & ~0x3C00);
+    v |= (uint16_t)((typ & 7) << 10);
+    outw(port, v);
+    outw(port, (uint16_t)(v | (1 << 13)));
 }
 
 void power_shutdown(void) {
     klog("power: shutting down");
-    if (pw.s5 && pw.pm1a_cnt) {
+    if (s5 && fadt.pm1a_cnt) {
         enter_acpi_mode();
-        klog("power: ACPI S5 (SLP_TYPa=%u SLP_TYPb=%u)", pw.slp_typa, pw.slp_typb);
-        outw(pw.pm1a_cnt, (uint16_t)(((pw.slp_typa & 7) << 10) | (1 << 13)));
-        if (pw.pm1b_cnt)
-            outw(pw.pm1b_cnt, (uint16_t)(((pw.slp_typb & 7) << 10) | (1 << 13)));
+        klog("power: ACPI S5 (SLP_TYPa=%u SLP_TYPb=%u)", slp_typa, slp_typb);
+        sleep_s5(fadt.pm1a_cnt, slp_typa);
+        if (fadt.pm1b_cnt)
+            sleep_s5(fadt.pm1b_cnt, slp_typb);
         delay_ms(500);
     }
     // Emulator-only ports: on real boards these can be live PM registers

@@ -61,7 +61,27 @@ static void test_cache(void) {
     CHECK(!cpu_decode_cache(0, 0, 0, &c));  // terminating entry
 }
 
+static void test_amd_legacy_cache(void) {
+    struct cache_desc c[4];
+    // 0x80000005 ECX/EDX: L1d/L1i KB in bits 31-24; 0x80000006 ECX: L2 KB in 31-16,
+    // EDX: L3 in 512 KB units in bits 31-18.
+    size_t n = cpu_decode_amd_legacy_caches(0x40020140, 0x40020140, 0x02008140, 0x00088140, c, 4);
+    CHECK_EQ(n, 4);
+    CHECK_EQ(c[0].level, 1);
+    CHECK_EQ(c[0].type, CACHE_DATA);
+    CHECK_EQ(c[0].size, 64 * 1024);
+    CHECK_EQ(c[1].type, CACHE_INSN);
+    CHECK_EQ(c[2].level, 2);
+    CHECK_EQ(c[2].type, CACHE_UNIFIED);
+    CHECK_EQ(c[2].size, 512 * 1024);
+    CHECK_EQ(c[3].level, 3);
+    CHECK_EQ(c[3].size, 1024 * 1024);
+    CHECK_EQ(cpu_decode_amd_legacy_caches(0x40020140, 0, 0, 0, c, 4), 1);  // zero sizes skipped
+    CHECK_EQ(cpu_decode_amd_legacy_caches(0x40020140, 0x40020140, 0x02008140, 0, c, 2), 2);  // max
+}
+
 int main(void) {
+    test_amd_legacy_cache();
     test_signature();
     test_features();
     test_cache();

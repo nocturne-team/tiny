@@ -70,6 +70,11 @@ void cpu_probe(struct cpu_info *c) {
         c->cache_count++;
     }
 
+    if (!c->cache_count && amd && c->max_ext_leaf >= 0x80000006) {
+        struct cpuid_regs l5 = cpuid(0x80000005, 0), l6 = cpuid(0x80000006, 0);
+        c->cache_count = cpu_decode_amd_legacy_caches(l5.ecx, l5.edx, l6.ecx, l6.edx, c->caches, CPU_MAX_CACHES);
+    }
+
     c->cpu_count = bootinfo.have_mp ? bootinfo.cpu_count : 0;
     c->bsp_lapic_id = bootinfo.bsp_lapic_id;
     c->tsc_hz = tsc_hz();

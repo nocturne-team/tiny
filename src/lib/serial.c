@@ -1,9 +1,12 @@
 #include "lib/serial.h"
 #include "arch/x86.h"
+#include <stdbool.h>
 #include <stdarg.h>
 #include "lib/fmt.h"
 
 #define COM1 0x3F8
+
+static bool dead;  // no UART here: drop output instead of waiting on it
 
 void serial_init(void) {
     outb(COM1 + 1, 0x00);  // no interrupts
@@ -13,12 +16,19 @@ void serial_init(void) {
     outb(COM1 + 3, 0x03);  // 8N1, DLAB off
     outb(COM1 + 2, 0xC7);  // enable and clear FIFOs
     outb(COM1 + 4, 0x03);  // DTR + RTS
+    outb(COM1 + 7, 0xAE);  // scratch register: reads back only if a UART exists
+    dead = inb(COM1 + 7) != 0xAE;
 }
 
 void serial_putc(char c) {
-    // Bounded wait: on machines without a UART the status port floats.
-    for (int i = 0; i < 100000 && !(inb(COM1 + 5) & 0x20); i++)
-        ;
+    if (dead)
+        return;
+    int i = 0;
+    while (!(inb(COM1 + 5) & 0x20))
+        if (++i == 100000) {
+            dead = true;  // transmitter never drained: stop waiting on every byte
+            return;
+        }
     outb(COM1, (uint8_t)c);
 }
 

@@ -1,7 +1,8 @@
 #pragma once
 #include <stdint.h>
 
-enum tsc_source { TSC_SRC_NONE, TSC_SRC_LIMINE, TSC_SRC_CPUID, TSC_SRC_PIT };
+// CPUID_BASE is leaf 0x16, the nominal base clock: close to, but not exactly, the TSC rate.
+enum tsc_source { TSC_SRC_NONE, TSC_SRC_LIMINE, TSC_SRC_CPUID, TSC_SRC_CPUID_BASE, TSC_SRC_PIT };
 
 // Determines the TSC frequency: Limine, then CPUID 0x15/0x16, then the PIT.
 void tsc_init(void);
