@@ -5,6 +5,7 @@
 #include "info/cpu.h"
 #include "info/fw.h"
 #include "info/mem.h"
+#include "info/pci.h"
 #include "info/tsc.h"
 #include "input/input.h"
 #include "lib/fmt.h"
@@ -16,7 +17,8 @@
 
 static struct cpu_info cpu;
 static struct fw_info fw;
-static struct page pages[3];
+static struct pci_list pci;
+static struct page pages[4];
 
 void kmain(void) {
     serial_init();
@@ -53,14 +55,17 @@ void kmain(void) {
     } else {
         klog("mem: no memory map from bootloader");
     }
+    pci_scan(pci_config_read, &pci);
+    klog("pci: %zu devices%s", pci.count, pci.truncated ? " (truncated)" : "");
     fw_probe(&fw);
     power_init(&fw.acpi);
 
     size_t width = (size_t)gfx_cols() - 4;
     tab_cpu_build(&pages[0], &cpu, width);
     tab_mem_build(&pages[1], bootinfo.memmap);
-    tab_fw_build(&pages[2], &fw);
+    tab_pci_build(&pages[2], &pci);
+    tab_fw_build(&pages[3], &fw);
     klog("PROBE OK");
 
-    ui_run(pages, 3, keyboard);
+    ui_run(pages, 4, keyboard);
 }

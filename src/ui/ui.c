@@ -30,7 +30,7 @@
 #define G_UP 0x18
 #define G_DN 0x19
 
-#define TABS_END_X 38  // tab labels end before this column; the clock may use the rest
+#define TABS_END_X 46  // tab labels end before this column; the clock may use the rest
 
 static struct page *pages;
 static size_t page_count, cur;
@@ -118,7 +118,7 @@ static void draw_content(void) {
 }
 
 static void draw_footer(void) {
-    const char *msg = "\x1b\x1a/F1-F3 tab  \x18\x19 PgUp/PgDn Home/End scroll  R reboot  S shut down";
+    const char *msg = "\x1b\x1a/F1-F4 tab  \x18\x19 PgUp/PgDn Home/End scroll  R reboot  S shut down";
     uint8_t attr = A_TEXT;
     if (pending == 'r') {
         msg = "Press R again to REBOOT - any other key cancels";
@@ -156,6 +156,7 @@ static void handle(const struct key_event *k) {
     case KEY_F1:
     case KEY_F2:
     case KEY_F3:
+    case KEY_F4:
         if ((size_t)(k->key - KEY_F1) < page_count)
             cur = (size_t)(k->key - KEY_F1);
         break;

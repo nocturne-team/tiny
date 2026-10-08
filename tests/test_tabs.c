@@ -1,6 +1,7 @@
 #include "test.h"
 #include "info/cpu.h"
 #include "info/fw.h"
+#include "info/pci.h"
 #include "ui/tabs.h"
 
 static struct page p;
@@ -101,7 +102,28 @@ static void test_fw(void) {  // Review Focus #5
     CHECK_STR(find_line(&p, "  APIC"), "  APIC  BOCHS        120  (bad csum)");
 }
 
+static void test_pci(void) {
+    static struct pci_list l;
+    memset(&l, 0, sizeof l);
+    tab_pci_build(&p, &l);
+    CHECK_STR(p.title, "PCI");
+    CHECK_STR(find_line(&p, "No PCI"), "No PCI devices found");
+
+    l.count = 2;
+    l.devices[0] = (struct pci_device){ 0, 31, 2, 0x8086, 0x2922, 0x01, 0x06, 0x01, 0x02, 0 };
+    l.devices[1] = (struct pci_device){ 5, 0, 0, 0x4242, 0x0001, 0x42, 0x00, 0x00, 0x00, 0 };
+    tab_pci_build(&p, &l);
+    CHECK_STR(find_line(&p, "00:1f.2"), "00:1f.2  8086:2922  SATA controller (AHCI)         Intel");
+    CHECK_STR(find_line(&p, "05:00.0"), "05:00.0  4242:0001  Unknown class                  -");
+    CHECK_STR(find_line(&p, "Devices"), "Devices (2)");
+
+    l.truncated = true;
+    tab_pci_build(&p, &l);
+    CHECK_EQ(p.lines[p.count - 1].style, STYLE_WARN);
+}
+
 int main(void) {
+    test_pci();
     test_cpu();
     test_mem();
     test_mem_huge();
