@@ -6,7 +6,7 @@
 #define XHCI_MAX_SLOTS 16
 #define XHCI_FREE_PAGES 96
 #define XHCI_CTRL_MAX 2048    // control-transfer data lives at buf[0 .. 2047]
-#define XHCI_REPORT_OFF 2048  // interrupt reports land at buf[2048 ..]
+#define XHCI_REPORT_OFF 2048  // interrupt reports: buffer i at buf + 2048 + 1024 * i
 #define XHCI_REPORT_MAX 1024
 
 // Completion codes we look at (0 is never sent by hardware: we use it for "timed out").
@@ -42,7 +42,20 @@ struct xhci_hub_info {
     uint8_t ports, ttt;
 };
 
-// One addressed device slot with EP0 and at most one interrupt IN endpoint.
+#define XHCI_MAX_INTR 2
+
+// One interrupt IN endpoint with a single transfer in flight.
+struct xhci_intr {
+    struct xhci_ring ring;
+    uint8_t dci;      // 0 until xhci_configure succeeds
+    uint16_t len;     // bytes requested per report
+    // Set by xhci_poll when the queued transfer completes.
+    bool done;
+    uint8_t cc;
+    uint16_t actual;
+};
+
+// One addressed device slot with EP0 and up to XHCI_MAX_INTR interrupt IN endpoints.
 struct xhci_dev {
     struct xhci *x;
     uint8_t slot;              // 0 when closed
@@ -51,18 +64,17 @@ struct xhci_dev {
     uint16_t mps0;
     volatile uint8_t *out_ctx, *in_ctx;
     uint64_t out_phys, in_phys;
-    struct xhci_ring ep0, intr;
-    uint8_t intr_dci;          // 0 until xhci_configure succeeds
-    uint16_t intr_len;         // bytes requested per report
-    uint8_t *buf;              // 4 KiB page, see XHCI_CTRL_MAX / XHCI_REPORT_OFF
+    struct xhci_ring ep0;
+    struct xhci_intr intr[XHCI_MAX_INTR];  // interrupt IN endpoints; dci == 0 when unused
+    uint8_t *buf;              // 4 KiB page, see XHCI_CTRL_MAX / xhci_report_buf
     uint64_t buf_phys;
-    // Set by xhci_poll when the queued interrupt transfer completes.
-    bool intr_done;
-    uint8_t intr_cc;
-    uint16_t intr_actual;
     // A command or transfer timed out and the controller may still own our pages: never recycle them.
     bool leak;
 };
+
+static inline uint8_t *xhci_report_buf(struct xhci_dev *d, int i) {
+    return d->buf + XHCI_REPORT_OFF + i * XHCI_REPORT_MAX;
+}
 
 struct xhci {
     char name[12];             // "bb:dd.f"
@@ -105,11 +117,12 @@ void xhci_dev_close(struct xhci_dev *d);
 // Synchronous control transfer; data in/out at d->buf. Returns the completion code (0 = timeout).
 uint8_t xhci_control(struct xhci_dev *d, uint8_t reqtype, uint8_t req, uint16_t value,
                      uint16_t index, uint16_t len);
-// Adds the interrupt IN endpoint (and hub fields when hub != NULL) with Configure Endpoint.
-bool xhci_configure(struct xhci_dev *d, uint8_t ep_addr, uint16_t mps, uint8_t binterval,
-                    const struct xhci_hub_info *hub);
-// Queues one interrupt transfer of d->intr_len bytes into d->buf + XHCI_REPORT_OFF.
-void xhci_intr_queue(struct xhci_dev *d);
+// Adds an interrupt IN endpoint (and hub fields when hub != NULL) with Configure Endpoint.
+// Returns its index in d->intr, or -1.
+int xhci_configure(struct xhci_dev *d, uint8_t ep_addr, uint16_t mps, uint8_t binterval,
+                   const struct xhci_hub_info *hub);
+// Queues one transfer of d->intr[i].len bytes into xhci_report_buf(d, i).
+void xhci_intr_queue(struct xhci_dev *d, int i);
 // Reset Endpoint + Set TR Dequeue Pointer, after a halt. keep_toggle sets TSP (soft retry
 // after a transaction error, when the device's data toggle did not advance).
 void xhci_ep_reset(struct xhci_dev *d, uint8_t dci, bool keep_toggle);

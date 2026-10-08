@@ -20,7 +20,7 @@
 #define HID_SET_IDLE 0x0A
 #define HID_SET_PROTOCOL 0x0B
 
-enum dev_kind { DEV_OTHER, DEV_KBD, DEV_HUB };
+enum dev_kind { DEV_OTHER, DEV_HID, DEV_HUB };
 
 struct usb_dev {
     bool used;
@@ -31,6 +31,8 @@ struct usb_dev {
     uint8_t errors;                       // consecutive interrupt-transfer errors
     bool stopped;                         // too many errors: no longer polled
     struct hid_kbd kbd;
+    bool is_kbd, is_mouse;                // HID functions that configured successfully
+    uint8_t kbd_ep, mouse_ep, hub_ep;     // their indices in xd.intr
     uint8_t nports;                       // hub
     struct usb_dev *child[HUB_MAX_PORTS + 1];
     uint16_t skip;                        // hub ports to leave alone until unplugged
@@ -63,7 +65,7 @@ static struct usb_dev *dev_new(void) {
 }
 
 static void dev_free(struct usb_dev *u) {
-    if (u->kind == DEV_KBD)
+    if (u->is_kbd)
         kbd_count--;
     xhci_dev_close(&u->xd);
     memset(u, 0, sizeof *u);
@@ -83,18 +85,31 @@ static uint8_t get_desc(struct xhci_dev *d, uint16_t type_index, uint16_t len) {
     return xhci_control(d, 0x80, REQ_GET_DESCRIPTOR, type_index, 0, len);
 }
 
-static bool kbd_setup(struct usb_dev *u, const struct usb_config_info *ci) {
+// One HID interface: boot protocol, no idle reports (either may stall on boot-only
+// devices), then its interrupt endpoint. *idx gets the endpoint index.
+static bool hid_iface_setup(struct usb_dev *u, uint8_t iface, const struct usb_ep_info *ep, uint8_t *idx) {
     struct xhci_dev *d = &u->xd;
-    if (!xhci_ok(xhci_control(d, 0x00, REQ_SET_CONFIGURATION, ci->value, 0, 0)))
+    xhci_control(d, 0x21, HID_SET_PROTOCOL, 0, iface, 0);
+    xhci_control(d, 0x21, HID_SET_IDLE, 0, iface, 0);
+    int i = xhci_configure(d, ep->addr, ep->mps, ep->interval, NULL);
+    if (i < 0)
         return false;
-    // Boot protocol and no idle reports. Keyboards that only speak boot protocol may stall these.
-    xhci_control(d, 0x21, HID_SET_PROTOCOL, 0, ci->kbd_iface, 0);
-    xhci_control(d, 0x21, HID_SET_IDLE, 0, ci->kbd_iface, 0);
-    if (!xhci_configure(d, ci->kbd_ep.addr, ci->kbd_ep.mps, ci->kbd_ep.interval, NULL))
+    *idx = (uint8_t)i;
+    xhci_intr_queue(d, i);
+    return true;
+}
+
+// Keyboard and/or mouse. Succeeds when at least one of them works.
+static bool hid_setup(struct usb_dev *u, const struct usb_config_info *ci) {
+    if (!xhci_ok(xhci_control(&u->xd, 0x00, REQ_SET_CONFIGURATION, ci->value, 0, 0)))
         return false;
-    u->kind = DEV_KBD;
-    kbd_count++;
-    xhci_intr_queue(d);
+    if (ci->has_kbd && hid_iface_setup(u, ci->kbd_iface, &ci->kbd_ep, &u->kbd_ep)) {
+        u->is_kbd = true;
+        kbd_count++;
+    }
+    if (!u->is_kbd && !u->is_mouse)
+        return false;
+    u->kind = DEV_HID;
     return true;
 }
 
@@ -192,8 +207,10 @@ static bool hub_setup(struct usb_dev *u, const struct usb_config_info *ci) {
         !usb_desc_hub(d->buf, 16, &hd))
         return false;
     struct xhci_hub_info hi = { .ports = hd.ports, .ttt = d->speed == USB_SPEED_HS ? hd.ttt : 0 };
-    if (!xhci_configure(d, ci->hub_ep.addr, ci->hub_ep.mps, ci->hub_ep.interval, &hi))
+    int hub_ep = xhci_configure(d, ci->hub_ep.addr, ci->hub_ep.mps, ci->hub_ep.interval, &hi);
+    if (hub_ep < 0)
         return false;
+    u->hub_ep = (uint8_t)hub_ep;
     u->kind = DEV_HUB;
     u->nports = hd.ports;
     klog("usb: port %s %s hub, %u ports", u->name, usb_speed_name(d->speed), hd.ports);
@@ -202,7 +219,7 @@ static bool hub_setup(struct usb_dev *u, const struct usb_config_info *ci) {
     mdelay(hd.pwr_good_ms > 100 ? hd.pwr_good_ms : 100);
     for (uint8_t p = 1; p <= hd.ports; p++)
         service_hub_port(u, p, false);
-    xhci_intr_queue(d);
+    xhci_intr_queue(d, u->hub_ep);
     return true;
 }
 
@@ -255,11 +272,13 @@ static struct usb_dev *dev_attach(struct xhci *x, const struct xhci_dev_addr *a,
         return u;
     }
     if (ci.has_kbd) {
-        if (!kbd_setup(u, &ci)) {
-            klog("usb: port %s %s keyboard %04x:%04x, setup failed", name, sp, di.vid, di.pid);
+        if (!hid_setup(u, &ci)) {
+            klog("usb: port %s %s HID %04x:%04x, setup failed", name, sp, di.vid, di.pid);
             goto fail;
         }
-        klog("usb: port %s %s keyboard %04x:%04x", name, sp, di.vid, di.pid);
+        klog("usb: port %s %s %s %04x:%04x", name, sp,
+             u->is_kbd && u->is_mouse ? "keyboard+mouse" : u->is_kbd ? "keyboard" : "mouse",
+             di.vid, di.pid);
         return u;
     }
     klog("usb: port %s %s device %04x:%04x class %02x, ignored", name, sp, di.vid, di.pid, di.dev_class);
@@ -350,41 +369,44 @@ static bool pop(struct key_event *out) {
     return true;
 }
 
-static void handle_report(struct usb_dev *u) {
+static void handle_report(struct usb_dev *u, int i) {
     struct xhci_dev *d = &u->xd;
-    d->intr_done = false;
-    enum xhci_recovery rec = xhci_intr_recovery(d->intr_cc);
+    struct xhci_intr *e = &d->intr[i];
+    e->done = false;
+    enum xhci_recovery rec = xhci_intr_recovery(e->cc);
     if (rec != XHCI_RECOVER_NONE) {
         if (++u->errors == 1)
-            klog("usb: port %s: transfer error (cc %u), recovering", u->name, d->intr_cc);
-        if (u->kind == DEV_KBD)
+            klog("usb: port %s: transfer error (cc %u), recovering", u->name, e->cc);
+        if (u->is_kbd && i == u->kbd_ep)
             hid_kbd_cancel_repeat(&u->kbd);  // the lost report may have been a release
         if (u->errors > 8) {
             u->stopped = true;
-            klog("usb: port %s: too many transfer errors (cc %u), stopped", u->name, d->intr_cc);
+            klog("usb: port %s: too many transfer errors (cc %u), stopped", u->name, e->cc);
             return;
         }
-        xhci_ep_reset(d, d->intr_dci, rec == XHCI_RECOVER_SOFT);
+        xhci_ep_reset(d, e->dci, rec == XHCI_RECOVER_SOFT);
         if (rec == XHCI_RECOVER_HALT)  // clear the device's halt too, so both ends restart at DATA0
-            xhci_control(d, 0x02, REQ_CLEAR_FEATURE, 0 /* ENDPOINT_HALT */, (uint16_t)(0x80 | (d->intr_dci - 1) / 2), 0);
-        xhci_intr_queue(d);
+            xhci_control(d, 0x02, REQ_CLEAR_FEATURE, 0 /* ENDPOINT_HALT */, (uint16_t)(0x80 | (e->dci - 1) / 2), 0);
+        xhci_intr_queue(d, i);
         return;
     }
     u->errors = 0;
-    const uint8_t *r = d->buf + XHCI_REPORT_OFF;
-    if (u->kind == DEV_KBD) {
-        struct key_event ev[6];
-        size_t n = hid_kbd_report(&u->kbd, r, d->intr_actual, tsc_ms(), ev);
-        for (size_t i = 0; i < n; i++)
-            push(&ev[i]);
-        xhci_intr_queue(d);
-    } else if (u->kind == DEV_HUB) {
+    const uint8_t *r = xhci_report_buf(d, i);
+    if (u->kind == DEV_HUB) {
         // Bitmap: bit 0 = hub itself, bit p = port p changed.
-        uint32_t bits = r[0] | (d->intr_actual > 1 ? (uint32_t)r[1] << 8 : 0);
-        xhci_intr_queue(d);  // bits copied out: the buffer may be refilled
+        uint32_t bits = r[0] | (e->actual > 1 ? (uint32_t)r[1] << 8 : 0);
+        xhci_intr_queue(d, i);  // bits copied out: the buffer may be refilled
         for (uint8_t p = 1; p <= u->nports; p++)
             if (bits & (1u << p))
                 service_hub_port(u, p, true);
+    } else if (u->is_kbd && i == u->kbd_ep) {
+        struct key_event ev[6];
+        size_t n = hid_kbd_report(&u->kbd, r, e->actual, tsc_ms(), ev);
+        for (size_t k = 0; k < n; k++)
+            push(&ev[k]);
+        xhci_intr_queue(d, i);
+    } else {
+        xhci_intr_queue(d, i);
     }
 }
 
@@ -409,14 +431,15 @@ bool usb_poll(struct key_event *out) {
     }
     for (size_t i = 0; i < USB_MAX_DEVS; i++) {
         struct usb_dev *u = &devs[i];
-        if (u->used && u->xd.intr_done && !u->stopped)
-            handle_report(u);
+        for (int k = 0; k < XHCI_MAX_INTR; k++)
+            if (u->used && !u->stopped && u->xd.intr[k].dci && u->xd.intr[k].done)
+                handle_report(u, k);
     }
     if (tsc_hz()) {
         uint64_t now = tsc_ms();
         for (size_t i = 0; i < USB_MAX_DEVS; i++) {
             struct key_event e;
-            if (devs[i].used && devs[i].kind == DEV_KBD && hid_kbd_tick(&devs[i].kbd, now, &e))
+            if (devs[i].used && devs[i].is_kbd && hid_kbd_tick(&devs[i].kbd, now, &e))
                 push(&e);
         }
     }

@@ -148,11 +148,11 @@ static void doorbell(struct xhci *x, uint8_t slot, uint8_t target) {
     wr(x->db, 4u * slot, target);
 }
 
-static void handle_event(struct xhci *x, volatile struct xhci_trb *e) {
-    uint32_t control = e->control;
+static void handle_event(struct xhci *x, volatile struct xhci_trb *ev) {
+    uint32_t control = ev->control;
     unsigned type = (control >> 10) & 0x3F;
-    uint8_t cc = (uint8_t)(e->status >> 24), slot = (uint8_t)(control >> 24);
-    uint64_t ptr = e->param;
+    uint8_t cc = (uint8_t)(ev->status >> 24), slot = (uint8_t)(control >> 24);
+    uint64_t ptr = ev->param;
 
     if (type == TRB_EV_PORT) {
         uint8_t port = (uint8_t)(ptr >> 24);
@@ -176,11 +176,14 @@ static void handle_event(struct xhci *x, volatile struct xhci_trb *e) {
     if (type == TRB_EV_TRANSFER && slot && slot <= XHCI_MAX_SLOTS && x->slots[slot]) {
         struct xhci_dev *d = x->slots[slot];
         uint8_t ep = (uint8_t)((control >> 16) & 0x1F);
-        if (d->intr_dci && ep == d->intr_dci) {
-            uint32_t residual = e->status & 0xFFFFFF;
-            d->intr_done = true;
-            d->intr_cc = cc;
-            d->intr_actual = (uint16_t)(residual < d->intr_len ? d->intr_len - residual : 0);
+        for (int i = 0; i < XHCI_MAX_INTR; i++) {
+            struct xhci_intr *e = &d->intr[i];
+            if (e->dci && ep == e->dci) {
+                uint32_t residual = ev->status & 0xFFFFFF;
+                e->done = true;
+                e->cc = cc;
+                e->actual = (uint16_t)(residual < e->len ? e->len - residual : 0);
+            }
         }
     }
 }
@@ -533,13 +536,17 @@ void xhci_dev_close(struct xhci_dev *d) {
         put_page(x, d->in_phys);
         put_page(x, d->buf_phys);
         put_page(x, d->ep0.phys);
-        put_page(x, d->intr.phys);
+        for (int i = 0; i < XHCI_MAX_INTR; i++)
+            put_page(x, d->intr[i].ring.phys);
     }
     memset(d, 0, sizeof *d);
 }
 
 static void set_dequeue(struct xhci_dev *d, uint8_t dci) {
-    struct xhci_ring *r = dci == 1 ? &d->ep0 : &d->intr;
+    struct xhci_ring *r = &d->ep0;
+    for (int i = 0; i < XHCI_MAX_INTR; i++)
+        if (dci != 1 && d->intr[i].dci == dci)
+            r = &d->intr[i].ring;
     command(d->x, (r->phys + (uint64_t)r->idx * sizeof(struct xhci_trb)) | r->cycle,
             TRB_TYPE(TRB_SET_TR_DEQ) | TRB_EP(dci) | TRB_SLOT(d->slot), NULL);
 }
@@ -583,19 +590,29 @@ uint8_t xhci_control(struct xhci_dev *d, uint8_t reqtype, uint8_t req, uint16_t 
     return cc;
 }
 
-bool xhci_configure(struct xhci_dev *d, uint8_t ep_addr, uint16_t mps, uint8_t binterval,
-                    const struct xhci_hub_info *hub) {
+int xhci_configure(struct xhci_dev *d, uint8_t ep_addr, uint16_t mps, uint8_t binterval,
+                   const struct xhci_hub_info *hub) {
     struct xhci *x = d->x;
     uint8_t dci = xhci_ep_dci(ep_addr);
-    if (!ring_init(x, &d->intr, true))
-        return false;
+    int idx = -1;
+    for (int i = 0; i < XHCI_MAX_INTR && idx < 0; i++)
+        if (!d->intr[i].dci && !d->intr[i].ring.phys)
+            idx = i;
+    if (idx < 0)
+        return -1;
+    struct xhci_intr *e = &d->intr[idx];
+    if (!ring_init(x, &e->ring, true))
+        return -1;
     memset((void *)(uintptr_t)d->in_ctx, 0, 4096);
     volatile uint32_t *ctl = in_ctx(d, 0), *s = in_ctx(d, 1), *ep = in_ctx(d, 1 + dci);
     volatile uint32_t *cur = out_ctx(d, 0);
     ctl[1] = 1u | 1u << dci;
     for (int i = 0; i < 4; i++)
         s[i] = cur[i];
-    s[0] = (s[0] & ~(0x1Fu << 27)) | (uint32_t)dci << 27;  // context entries
+    uint32_t entries = (s[0] >> 27) & 0x1F;
+    if (dci > entries)
+        entries = dci;
+    s[0] = (s[0] & ~(0x1Fu << 27)) | entries << 27;  // context entries: highest DCI in use
     s[3] = 0;
     if (hub) {
         s[0] |= 1u << 26;
@@ -604,25 +621,26 @@ bool xhci_configure(struct xhci_dev *d, uint8_t ep_addr, uint16_t mps, uint8_t b
     }
     ep[0] = (uint32_t)xhci_ep_interval(d->speed, binterval) << 16;
     ep[1] = 3u << 1 | EP_TYPE_INTR_IN << 3 | (uint32_t)mps << 16;
-    ep[2] = (uint32_t)d->intr.phys | 1;
-    ep[3] = (uint32_t)(d->intr.phys >> 32);
+    ep[2] = (uint32_t)e->ring.phys | 1;
+    ep[3] = (uint32_t)(e->ring.phys >> 32);
     ep[4] = 8 | (uint32_t)mps << 16;  // average TRB length, max ESIT payload
     uint8_t cc = command(x, d->in_phys, TRB_TYPE(TRB_CONFIGURE_EP) | TRB_SLOT(d->slot), NULL);
     if (cc != XHCI_CC_SUCCESS) {
         if (!cc)
             d->leak = true;  // the controller may still adopt the ring; xhci_dev_close frees the rest
-        return false;
+        return -1;
     }
-    d->intr_dci = dci;
-    d->intr_len = mps > XHCI_REPORT_MAX ? XHCI_REPORT_MAX : mps;
-    return true;
+    e->dci = dci;
+    e->len = mps > XHCI_REPORT_MAX ? XHCI_REPORT_MAX : mps;
+    return idx;
 }
 
-void xhci_intr_queue(struct xhci_dev *d) {
-    d->intr_done = false;
-    ring_push(&d->intr, d->buf_phys + XHCI_REPORT_OFF, d->intr_len,
+void xhci_intr_queue(struct xhci_dev *d, int i) {
+    struct xhci_intr *e = &d->intr[i];
+    e->done = false;
+    ring_push(&e->ring, d->buf_phys + XHCI_REPORT_OFF + (uint64_t)i * XHCI_REPORT_MAX, e->len,
               TRB_TYPE(TRB_NORMAL) | TRB_IOC | TRB_ISP);
-    doorbell(d->x, d->slot, d->intr_dci);
+    doorbell(d->x, d->slot, e->dci);
 }
 
 void xhci_ep_reset(struct xhci_dev *d, uint8_t dci, bool keep_toggle) {
