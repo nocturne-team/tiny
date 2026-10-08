@@ -18,6 +18,7 @@
 #define REQ_SET_FEATURE 3
 #define REQ_GET_DESCRIPTOR 6
 #define REQ_SET_CONFIGURATION 9
+#define HID_GET_PROTOCOL 0x03
 #define HID_SET_IDLE 0x0A
 #define HID_SET_PROTOCOL 0x0B
 
@@ -29,8 +30,8 @@ struct usb_dev {
     struct xhci_dev xd;
     char name[16];                        // "2" on a root port, "2.1" behind a hub
     struct usb_dev *parent;               // hub, or NULL on a root port
-    uint8_t errors;                       // consecutive interrupt-transfer errors
-    bool stopped;                         // too many errors: no longer polled
+    uint8_t errors[XHCI_MAX_INTR];        // consecutive transfer errors, per endpoint
+    bool stopped[XHCI_MAX_INTR];          // too many errors: endpoint no longer polled
     struct hid_kbd kbd;
     bool is_kbd, is_mouse;                // HID functions that configured successfully
     uint8_t kbd_ep, mouse_ep, hub_ep;     // their indices in xd.intr
@@ -91,6 +92,13 @@ static uint8_t get_desc(struct xhci_dev *d, uint16_t type_index, uint16_t len) {
 static bool hid_iface_setup(struct usb_dev *u, uint8_t iface, const struct usb_ep_info *ep, uint8_t *idx) {
     struct xhci_dev *d = &u->xd;
     xhci_control(d, 0x21, HID_SET_PROTOCOL, 0, iface, 0);
+    // A device that ignored SET_PROTOCOL would send report-protocol data that the boot
+    // decoders misread (a mouse whose motion scrolls pages). If it answers GET_PROTOCOL
+    // with "report", skip the interface; if it stalls, it is boot-only, which is fine.
+    if (xhci_ok(xhci_control(d, 0xA1, HID_GET_PROTOCOL, 0, iface, 1)) && d->buf[0] != 0) {
+        klog("usb: port %s: interface %u stays in report protocol, ignored", u->name, iface);
+        return false;
+    }
     xhci_control(d, 0x21, HID_SET_IDLE, 0, iface, 0);
     int i = xhci_configure(d, ep->addr, ep->mps, ep->interval, NULL);
     if (i < 0)
@@ -415,13 +423,20 @@ static void handle_report(struct usb_dev *u, int i) {
     e->done = false;
     enum xhci_recovery rec = xhci_intr_recovery(e->cc);
     if (rec != XHCI_RECOVER_NONE) {
-        if (++u->errors == 1)
+        if (++u->errors[i] == 1)
             klog("usb: port %s: transfer error (cc %u), recovering", u->name, e->cc);
         if (u->is_kbd && i == u->kbd_ep)
             hid_kbd_cancel_repeat(&u->kbd);  // the lost report may have been a release
-        if (u->errors > 8) {
-            u->stopped = true;
+        if (u->errors[i] > 8) {
+            // Give up on this endpoint only: the other half of a combo receiver keeps working.
+            u->stopped[i] = true;
             klog("usb: port %s: too many transfer errors (cc %u), stopped", u->name, e->cc);
+            if (u->is_kbd && i == u->kbd_ep) {
+                u->is_kbd = false;  // the footer must not claim a keyboard that no longer works
+                kbd_count--;
+            }
+            if (u->is_mouse && i == u->mouse_ep)
+                u->is_mouse = false;
             return;
         }
         xhci_ep_reset(d, e->dci, rec == XHCI_RECOVER_SOFT);
@@ -430,7 +445,7 @@ static void handle_report(struct usb_dev *u, int i) {
         xhci_intr_queue(d, i);
         return;
     }
-    u->errors = 0;
+    u->errors[i] = 0;
     const uint8_t *r = xhci_report_buf(d, i);
     if (u->kind == DEV_HUB) {
         // Bitmap: bit 0 = hub itself, bit p = port p changed.
@@ -477,7 +492,7 @@ bool usb_poll(struct key_event *out) {
     for (size_t i = 0; i < USB_MAX_DEVS; i++) {
         struct usb_dev *u = &devs[i];
         for (int k = 0; k < XHCI_MAX_INTR; k++)
-            if (u->used && !u->stopped && u->xd.intr[k].dci && u->xd.intr[k].done)
+            if (u->used && !u->stopped[k] && u->xd.intr[k].dci && u->xd.intr[k].done)
                 handle_report(u, k);
     }
     if (tsc_hz()) {
