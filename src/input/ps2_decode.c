@@ -43,6 +43,7 @@ bool ps2_decode(struct ps2_decoder *d, uint8_t sc, struct key_event *out) {
         case 0x3C: k = KEY_F2; break;
         case 0x3D: k = KEY_F3; break;
         case 0x3E: k = KEY_F4; break;
+        case 0x3F: k = KEY_F5; break;
         default:
             if (sc < sizeof set1_ascii && set1_ascii[sc]) {
                 out->key = KEY_CHAR;

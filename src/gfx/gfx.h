@@ -36,6 +36,8 @@ const struct gfx_layout *gfx_get_layout(void);
 
 // Cell writes go to a back buffer and are clipped to the grid.
 void gfx_put(int x, int y, uint8_t ch, uint8_t attr);
+// Draws a braille cell (dot pattern = codepoint - U+2800) instead of a font glyph.
+void gfx_put_braille(int x, int y, uint8_t pattern, uint8_t attr);
 int gfx_puts(int x, int y, const char *s, uint8_t attr, int maxlen);
 void gfx_fill(int x, int y, int w, int h, uint8_t ch, uint8_t attr);
 // Draws every cell that changed since the last flush.

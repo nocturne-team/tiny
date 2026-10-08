@@ -2,6 +2,7 @@
 #include "info/cpu.h"
 #include "info/fw.h"
 #include "info/pci.h"
+#include "ui/about_art.h"
 #include "ui/tabs.h"
 
 static struct page p;
@@ -122,7 +123,20 @@ static void test_pci(void) {
     CHECK_EQ(p.lines[p.count - 1].style, STYLE_WARN);
 }
 
+static void test_about(void) {
+    tab_about_build(&p);
+    CHECK_STR(p.title, "About");
+    for (int i = 0; i < ABOUT_ART_ROWS; i++) {
+        CHECK_EQ(p.lines[i].style, STYLE_ART);
+        CHECK_EQ((unsigned char)p.lines[i].text[0], i + 1);  // art row, 1-based
+    }
+    CHECK(strncmp(find_line(&p, "tiny v"), "tiny v0.2", 9) == 0);
+    CHECK(strstr(find_line(&p, "Bootloader"), "Limine") != NULL);
+    CHECK(!p.truncated);
+}
+
 int main(void) {
+    test_about();
     test_pci();
     test_cpu();
     test_mem();

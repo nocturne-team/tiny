@@ -1,9 +1,11 @@
 #include "gfx/gfx.h"
+#include "gfx/braille.h"
 #include "gfx/font.h"
 #include "limine.h"
 
 struct cell {
     uint8_t ch, attr;
+    uint8_t braille;  // ch is a braille dot pattern, not a font index
 };
 
 static struct cell back[GFX_MAX_ROWS][GFX_MAX_COLS];   // what the UI wants on screen
@@ -46,8 +48,8 @@ bool gfx_init(const struct limine_framebuffer *fb) {
     }
     for (int y = 0; y < lay.rows; y++)
         for (int x = 0; x < lay.cols; x++) {
-            back[y][x] = (struct cell){ ' ', ATTR(C_LGRAY, C_BLACK) };
-            front[y][x] = (struct cell){ 0, 0 };  // differs from back: first flush draws all
+            back[y][x] = (struct cell){ ' ', ATTR(C_LGRAY, C_BLACK), 0 };
+            front[y][x] = (struct cell){ 0, 0, 0 };  // differs from back: first flush draws all
         }
     ready = true;
     return true;
@@ -61,7 +63,13 @@ const struct gfx_layout *gfx_get_layout(void) { return &lay; }
 void gfx_put(int x, int y, uint8_t ch, uint8_t attr) {
     if (x < 0 || y < 0 || x >= lay.cols || y >= lay.rows)
         return;
-    back[y][x] = (struct cell){ ch, attr };
+    back[y][x] = (struct cell){ ch, attr, 0 };
+}
+
+void gfx_put_braille(int x, int y, uint8_t pattern, uint8_t attr) {
+    if (x < 0 || y < 0 || x >= lay.cols || y >= lay.rows)
+        return;
+    back[y][x] = (struct cell){ pattern, attr, 1 };
 }
 
 int gfx_puts(int x, int y, const char *s, uint8_t attr, int maxlen) {
@@ -78,7 +86,12 @@ void gfx_fill(int x, int y, int w, int h, uint8_t ch, uint8_t attr) {
 }
 
 static void draw_cell(int cx, int cy, struct cell c) {
+    uint8_t dots[16];
     const uint8_t *glyph = font8x16[c.ch];
+    if (c.braille) {
+        braille_glyph(c.ch, dots);
+        glyph = dots;
+    }
     uint32_t fg = palette[c.attr & 0x0F], bg = palette[c.attr >> 4];
     int s = lay.scale;
     uint64_t px = (uint64_t)lay.x0 + (uint64_t)cx * 8 * s;
@@ -103,7 +116,8 @@ void gfx_flush(void) {
         return;
     for (int y = 0; y < lay.rows; y++)
         for (int x = 0; x < lay.cols; x++)
-            if (back[y][x].ch != front[y][x].ch || back[y][x].attr != front[y][x].attr) {
+            if (back[y][x].ch != front[y][x].ch || back[y][x].attr != front[y][x].attr ||
+                back[y][x].braille != front[y][x].braille) {
                 draw_cell(x, y, back[y][x]);
                 front[y][x] = back[y][x];
             }

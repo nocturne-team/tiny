@@ -8,6 +8,7 @@
 #include "lib/serial.h"
 #include "lib/string.h"
 #include "power.h"
+#include "ui/about_art.h"
 
 #define A_FRAME   ATTR(C_LCYAN, C_BLACK)
 #define A_TITLE   ATTR(C_WHITE, C_BLACK)
@@ -15,6 +16,7 @@
 #define A_HEAD    ATTR(C_YELLOW, C_BLACK)
 #define A_DIM     ATTR(C_CYAN, C_BLACK)
 #define A_WARN    ATTR(C_LRED, C_BLACK)
+#define A_ART     ATTR(C_WHITE, C_BLACK)
 #define A_TAB_SEL ATTR(C_BLACK, C_CYAN)
 #define A_ALERT   ATTR(C_YELLOW, C_RED)
 
@@ -30,7 +32,7 @@
 #define G_UP 0x18
 #define G_DN 0x19
 
-#define TABS_END_X 46  // tab labels end before this column; the clock may use the rest
+#define TABS_END_X 56  // tab labels end before this column; the clock may use the rest
 
 static struct page *pages;
 static size_t page_count, cur;
@@ -98,6 +100,10 @@ static void draw_clock(void) {
     int avail = cols - 2 - TABS_END_X;
     gfx_fill(TABS_END_X, 1, avail, 1, ' ', A_TEXT);
     int len = (int)strlen(buf);
+    if (len > avail && buf[4] == '-') {  // narrow screen: drop the date
+        memmove(buf, buf + 11, strlen(buf + 11) + 1);
+        len = (int)strlen(buf);
+    }
     if (len <= avail)
         gfx_puts(cols - 2 - len, 1, buf, A_TEXT, len);
 }
@@ -109,8 +115,16 @@ static void draw_content(void) {
         int y = 3 + (int)i;
         gfx_fill(1, y, cols - 2, 1, ' ', A_TEXT);
         size_t li = p->scroll + i;
-        if (li < p->count)
-            gfx_puts(2, y, p->lines[li].text, style_attr(p->lines[li].style), cols - 4);
+        if (li >= p->count)
+            continue;
+        const struct line *l = &p->lines[li];
+        if (l->style == STYLE_ART) {
+            int row = (unsigned char)l->text[0] - 1;
+            for (int c = 0; row >= 0 && row < ABOUT_ART_ROWS && c < ABOUT_ART_COLS && c < cols - 4; c++)
+                gfx_put_braille(2 + c, y, about_art[row][c], A_ART);
+        } else {
+            gfx_puts(2, y, l->text, style_attr(l->style), cols - 4);
+        }
     }
     // Scroll hints in the right border.
     gfx_put(cols - 1, 3, p->scroll > 0 ? G_UP : G_V, A_FRAME);
@@ -118,7 +132,7 @@ static void draw_content(void) {
 }
 
 static void draw_footer(void) {
-    const char *msg = "\x1b\x1a/F1-F4 tab  \x18\x19 PgUp/PgDn Home/End scroll  R reboot  S shut down";
+    const char *msg = "\x1b\x1a/F1-F5 tab  \x18\x19 PgUp/PgDn Home/End scroll  R reboot  S shut down";
     uint8_t attr = A_TEXT;
     if (pending == 'r') {
         msg = "Press R again to REBOOT - any other key cancels";
@@ -157,6 +171,7 @@ static void handle(const struct key_event *k) {
     case KEY_F2:
     case KEY_F3:
     case KEY_F4:
+    case KEY_F5:
         if ((size_t)(k->key - KEY_F1) < page_count)
             cur = (size_t)(k->key - KEY_F1);
         break;

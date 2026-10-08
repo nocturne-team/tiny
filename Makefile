@@ -79,7 +79,7 @@ run-uefi: $(ISO) $(BUILD)/ovmf-vars.fd
 
 shots: $(ISO)
 	tools/qemu-shot.py $(ISO) build/shots shot:cpu right shot:memory pgdn shot:memory-pgdn \
-		f3 shot:pci f4 shot:firmware end shot:firmware-end s shot:confirm-shutdown esc shot:cancelled
+		f3 shot:pci f4 shot:firmware end shot:firmware-end f5 shot:about pgdn shot:about-pgdn s shot:confirm-shutdown esc shot:cancelled
 	tools/qemu-shot.py $(ISO) build/shots --uefi f3 shot:uefi-pci f4 shot:uefi-firmware
 
 # --- host unit tests ----------------------------------------------------------
@@ -102,9 +102,11 @@ TESTS += test_smbios
 deps_test_smbios := src/info/smbios.c src/lib/fmt.c
 TESTS += test_page test_tabs
 deps_test_page := src/ui/page.c src/lib/fmt.c
-deps_test_tabs := src/ui/tab_pci.c src/info/pci.c src/ui/tab_cpu.c src/ui/tab_mem.c src/ui/tab_fw.c src/ui/page.c src/info/mem.c src/lib/fmt.c
+deps_test_tabs := src/ui/tab_about.c src/ui/tab_pci.c src/info/pci.c src/ui/tab_cpu.c src/ui/tab_mem.c src/ui/tab_fw.c src/ui/page.c src/info/mem.c src/lib/fmt.c
 TESTS += test_pci
 deps_test_pci := src/info/pci.c
+TESTS += test_braille
+deps_test_braille := src/gfx/braille.c
 # (add "TESTS += test_x" and "deps_test_x := ..." lines above this comment)
 
 define TEST_RULE

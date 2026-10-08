@@ -10,7 +10,7 @@ ACPI tables, RTC). It boots from one ISO on BIOS and UEFI machines via
 
 | Key | Action |
 |---|---|
-| ← / → or F1–F4 | switch tab (CPU, Memory, PCI, Firmware) |
+| ← / → or F1–F5 | switch tab (CPU, Memory, PCI, Firmware, About) |
 | ↑ / ↓, PgUp / PgDn, Home / End | scroll |
 | R, then R again | reboot |
 | S, then S again | shut down (ACPI S5) |

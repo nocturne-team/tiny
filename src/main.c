@@ -18,7 +18,7 @@
 static struct cpu_info cpu;
 static struct fw_info fw;
 static struct pci_list pci;
-static struct page pages[4];
+static struct page pages[5];
 
 void kmain(void) {
     serial_init();
@@ -65,7 +65,8 @@ void kmain(void) {
     tab_mem_build(&pages[1], bootinfo.memmap);
     tab_pci_build(&pages[2], &pci);
     tab_fw_build(&pages[3], &fw);
+    tab_about_build(&pages[4]);
     klog("PROBE OK");
 
-    ui_run(pages, 4, keyboard);
+    ui_run(pages, 5, keyboard);
 }

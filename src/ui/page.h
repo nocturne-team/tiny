@@ -7,7 +7,8 @@
 #define PAGE_MAX_LINES 300
 #define PAGE_KEY_WIDTH 16   // page_kv key column: 15 chars + 1 space
 
-enum line_style { STYLE_TEXT, STYLE_HEAD, STYLE_DIM, STYLE_WARN };
+// STYLE_ART lines hold one byte: the 1-based row of the About art to draw.
+enum line_style { STYLE_TEXT, STYLE_HEAD, STYLE_DIM, STYLE_WARN, STYLE_ART };
 
 struct line {
     uint8_t style;
