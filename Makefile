@@ -91,6 +91,8 @@ TESTS += test_cpu
 deps_test_cpu := src/info/cpu_decode.c
 TESTS += test_mem
 deps_test_mem := src/info/mem.c
+TESTS += test_acpi
+deps_test_acpi := src/info/acpi.c src/lib/fmt.c
 # (add "TESTS += test_x" and "deps_test_x := ..." lines above this comment)
 
 define TEST_RULE
