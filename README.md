@@ -16,6 +16,9 @@ ACPI tables, RTC). It boots from one ISO on BIOS and UEFI machines via
 | R, then R again | reboot |
 | S, then S again | shut down (ACPI S5) |
 
+A USB mouse works too: the wheel scrolls, and clicking a tab label switches to
+it. The pointer is a highlighted cell that appears when the mouse moves.
+
 Input works from a PS/2 keyboard or a USB keyboard on an xHCI controller
 (root port or behind one hub; hotplug works). On machines whose firmware has no
 PS/2 emulation, plug the keyboard in and go. If the USB driver misbehaves on

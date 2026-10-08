@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
 """Boot a tiny ISO headless in QEMU, press keys, and save PNG screenshots.
 
-usage: tools/qemu-shot.py ISO OUTDIR [--uefi] [--usb-kbd] [STEP ...]
+usage: tools/qemu-shot.py ISO OUTDIR [--uefi] [--usb-kbd] [--usb-mouse] [STEP ...]
 
 --usb-kbd: PS/2 off; keys go to a USB keyboard on an xHCI.
+--usb-mouse: also attach a USB mouse (PS/2 off, xHCI added if needed).
 
 Waits for "UI READY" on the serial port, then runs each STEP in order:
   shot:NAME   save OUTDIR/NAME.png
   wait:SECS   sleep
+  mouse:DX:DY relative mouse motion
   other       send as a QEMU key (qcode), e.g. right, down, pgdn, f2, r, esc
 The serial log is printed when QEMU is stopped.
 """
@@ -63,11 +65,20 @@ def wait_for(path, text, timeout):
     sys.exit('timed out waiting for %r on serial' % text)
 
 
+def send_mouse(qmp, dx, dy):
+    """Relative mouse motion. QEMU's usb-mouse splits it into +-127 reports."""
+    qmp.cmd('input-send-event', events=[
+        {'type': 'rel', 'data': {'axis': 'x', 'value': dx}},
+        {'type': 'rel', 'data': {'axis': 'y', 'value': dy}}])
+    time.sleep(0.5)
+
+
 def main():
     args = sys.argv[1:]
     uefi = '--uefi' in args
     usb = '--usb-kbd' in args
-    args = [a for a in args if a not in ('--uefi', '--usb-kbd')]
+    mouse = '--usb-mouse' in args
+    args = [a for a in args if a not in ('--uefi', '--usb-kbd', '--usb-mouse')]
     if len(args) < 2:
         sys.exit(__doc__)
     iso, outdir, steps = args[0], args[1], args[2:]
@@ -83,6 +94,11 @@ def main():
     if usb:
         cmd[cmd.index('q35')] = 'q35,i8042=off'
         cmd += ['-device', 'qemu-xhci,id=xhci', '-device', 'usb-kbd,bus=xhci.0']
+    if mouse:
+        if not usb:
+            cmd[cmd.index('q35')] = 'q35,i8042=off'
+            cmd += ['-device', 'qemu-xhci,id=xhci']
+        cmd += ['-device', 'usb-mouse,bus=xhci.0']
     if uefi:
         vars_copy = os.path.join(tmp, 'vars.fd')
         shutil.copy(OVMF_VARS, vars_copy)
@@ -101,6 +117,9 @@ def main():
                 print('saved', out)
             elif step.startswith('wait:'):
                 time.sleep(float(step[5:]))
+            elif step.startswith('mouse:'):
+                _, dx, dy = step.split(':')
+                send_mouse(qmp, int(dx), int(dy))
             else:
                 qmp.cmd('send-key', keys=[{'type': 'qcode', 'data': step}])
                 time.sleep(0.4)

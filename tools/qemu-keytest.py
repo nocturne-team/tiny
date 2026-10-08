@@ -11,6 +11,8 @@ devices (e.g. -device usb-kbd,bus=xhci.0). Steps run in order:
   key:QCODE        press and release a key (goes to the USB keyboard)
   add:DRIVER,K=V…  device_add
   del:ID           device_del
+  mouse:DX:DY      relative mouse motion (to the USB mouse)
+  click:BUTTON     press and release a mouse button (left, right, middle)
   count:N:REGEX    after QEMU exits, REGEX must match exactly N times
 QEMU must then exit through isa-debug-exit 0x10 (status 33): the SMOKE_KEYS
 build does that on the first tab change.
@@ -89,6 +91,17 @@ def main():
             elif kind == 'add':
                 driver, *opts = rest.split(',')
                 qmp.cmd('device_add', driver=driver, **dict(o.split('=', 1) for o in opts))
+            elif kind == 'mouse':
+                dx, _, dy = rest.partition(':')
+                shot.send_mouse(qmp, int(dx), int(dy))
+            elif kind == 'click':
+                for down in (True, False):
+                    try:
+                        qmp.cmd('input-send-event', events=[
+                            {'type': 'btn', 'data': {'down': down, 'button': rest}}])
+                    except (OSError, ValueError):
+                        pass  # QEMU may exit on the click: the expected outcome
+                    time.sleep(0.2)
             elif kind == 'del':
                 qmp.cmd('device_del', id=rest)
             elif kind == 'count':

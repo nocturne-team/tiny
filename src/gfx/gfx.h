@@ -42,3 +42,6 @@ int gfx_puts(int x, int y, const char *s, uint8_t attr, int maxlen);
 void gfx_fill(int x, int y, int w, int h, uint8_t ch, uint8_t attr);
 // Draws every cell that changed since the last flush.
 void gfx_flush(void);
+// Shows one cell with swapped foreground/background colours (the mouse pointer).
+// x < 0 hides it. Takes effect at the next gfx_flush.
+void gfx_set_cursor(int x, int y);

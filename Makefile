@@ -88,6 +88,7 @@ shots: $(ISO)
 		f3 shot:pci f4 shot:firmware end shot:firmware-end f5 shot:about pgdn shot:about-pgdn s shot:confirm-shutdown esc shot:cancelled
 	tools/qemu-shot.py $(ISO) build/shots --uefi f3 shot:uefi-pci f4 shot:uefi-firmware
 	tools/qemu-shot.py $(ISO) build/shots --usb-kbd f3 shot:usb-pci
+	tools/qemu-shot.py $(ISO) build/shots --usb-kbd --usb-mouse f5 mouse:-5000:-5000 mouse:400:200 wait:0.5 shot:mouse-cursor
 
 # --- host unit tests ----------------------------------------------------------
 TESTS :=
@@ -184,6 +185,8 @@ smoke:
 		'wait:keyboard 0627:' 'wait:keyboard 0627:' 'wait:ignored' key:f3 'wait:ui: tab 3' 'count:1:ignored'
 	QEMU_EXTRA="-device qemu-xhci,id=xhci -device usb-mouse,bus=xhci.0" \
 		tests/smoke.sh build/smoke/tiny.iso bios ok q35 "s mouse 0627:"
+	$(KEYTEST) -device usb-kbd,bus=xhci.0 -device usb-mouse,bus=xhci.0 -- 'wait:keyboard 0627:' \
+		'wait:mouse 0627:' mouse:-5000:-5000 mouse:159:18 click:left 'wait:ui: tab 3'
 	$(KEYTEST) -- add:usb-kbd,bus=xhci.0,id=k1 'wait:keyboard 0627:' 'wait:ui: keyboard found' \
 		del:k1 'wait:disconnected' 'wait:ui: keyboard missing' \
 		add:usb-kbd,bus=xhci.0,id=k2 'wait:keyboard 0627:' 'wait:ui: keyboard found' key:f3 'wait:ui: tab 3'

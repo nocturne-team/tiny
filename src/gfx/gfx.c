@@ -15,6 +15,7 @@ static volatile uint8_t *fb_base;
 static uint64_t fb_pitch;
 static uint32_t palette[16];
 static bool ready;
+static int cur_x = -1, cur_y = -1;  // mouse pointer cell, x < 0 = hidden
 
 static const uint8_t vga_rgb[16][3] = {
     {0, 0, 0},     {0, 0, 170},    {0, 170, 0},    {0, 170, 170},
@@ -115,10 +116,18 @@ void gfx_flush(void) {
     if (!ready)
         return;
     for (int y = 0; y < lay.rows; y++)
-        for (int x = 0; x < lay.cols; x++)
-            if (back[y][x].ch != front[y][x].ch || back[y][x].attr != front[y][x].attr ||
-                back[y][x].braille != front[y][x].braille) {
-                draw_cell(x, y, back[y][x]);
-                front[y][x] = back[y][x];
+        for (int x = 0; x < lay.cols; x++) {
+            struct cell c = back[y][x];
+            if (x == cur_x && y == cur_y)
+                c.attr = (uint8_t)(c.attr >> 4 | c.attr << 4);  // the pointer: swapped colours
+            if (c.ch != front[y][x].ch || c.attr != front[y][x].attr || c.braille != front[y][x].braille) {
+                draw_cell(x, y, c);
+                front[y][x] = c;
             }
+        }
+}
+
+void gfx_set_cursor(int x, int y) {
+    cur_x = x;
+    cur_y = y;
 }

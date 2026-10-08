@@ -9,6 +9,7 @@
 #include "lib/string.h"
 #include "power.h"
 #include "ui/about_art.h"
+#include "ui/pointer.h"
 
 #define A_FRAME   ATTR(C_LCYAN, C_BLACK)
 #define A_TITLE   ATTR(C_WHITE, C_BLACK)
@@ -38,6 +39,9 @@ static struct page *pages;
 static size_t page_count, cur;
 static char pending;  // 'r' or 's' while waiting for confirmation
 static int cols, rows;
+static struct pointer ptr;
+static const char *titles[5];
+static uint8_t last_buttons;
 
 static size_t visible(void) {
     return (size_t)(rows - 6);
@@ -149,6 +153,13 @@ static void draw_footer(void) {
     gfx_puts(2, rows - 2, msg, attr, cols - 4);
 }
 
+static void tab_changed(void) {
+    klog("ui: tab %zu", cur + 1);
+#ifdef SMOKE_KEYS
+    qemu_debug_exit(0x10);
+#endif
+}
+
 static void handle(const struct key_event *k) {
     // Letter keys are commands (R/S confirm); a held key must not confirm itself.
     if (k->key == KEY_CHAR && k->repeat)
@@ -192,16 +203,32 @@ static void handle(const struct key_event *k) {
         break;
     default: break;
     }
-    if (cur != before) {
-        klog("ui: tab %zu", cur + 1);
-#ifdef SMOKE_KEYS
-        qemu_debug_exit(0x10);
-#endif
-    }
+    if (cur != before)
+        tab_changed();
     draw_tabs();
     draw_clock();
     draw_content();
     draw_footer();
+}
+
+static void handle_pointer(const struct pointer_event *e) {
+    if (pointer_move(&ptr, e->dx, e->dy, cols, rows))
+        gfx_set_cursor(ptr.x, ptr.y);
+    if (e->wheel) {
+        page_scroll(&pages[cur], pointer_wheel_lines(e->wheel), visible());
+        draw_content();
+    }
+    bool click = (e->buttons & 1) && !(last_buttons & 1);
+    last_buttons = e->buttons;
+    if (click && ptr.y == 1) {
+        int t = pointer_tab_at(titles, page_count, ptr.x);
+        if (t >= 0 && (size_t)t != cur) {
+            cur = (size_t)t;
+            tab_changed();
+            draw_tabs();
+            draw_content();
+        }
+    }
 }
 
 void ui_run(struct page *pg, size_t count) {
@@ -209,6 +236,9 @@ void ui_run(struct page *pg, size_t count) {
     page_count = count;
     cols = gfx_cols();
     rows = gfx_rows();
+    for (size_t i = 0; i < count && i < 5; i++)
+        titles[i] = pg[i].title;
+    pointer_init(&ptr, cols, rows);
 
     draw_frame();
     draw_tabs();
@@ -230,6 +260,11 @@ void ui_run(struct page *pg, size_t count) {
         struct key_event k;
         while (input_poll(&k)) {
             handle(&k);
+            dirty = true;
+        }
+        struct pointer_event pe;
+        while (input_poll_pointer(&pe)) {
+            handle_pointer(&pe);
             dirty = true;
         }
         if (input_keyboard_changed()) {
