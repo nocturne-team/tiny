@@ -79,6 +79,8 @@ run-uefi: $(ISO) $(BUILD)/ovmf-vars.fd
 
 # --- host unit tests ----------------------------------------------------------
 TESTS :=
+TESTS += test_fmt
+deps_test_fmt := src/lib/fmt.c
 # (add "TESTS += test_x" and "deps_test_x := ..." lines above this comment)
 
 define TEST_RULE

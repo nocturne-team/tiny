@@ -1,5 +1,7 @@
 #include "lib/serial.h"
 #include "arch/x86.h"
+#include <stdarg.h>
+#include "lib/fmt.h"
 
 #define COM1 0x3F8
 
@@ -26,4 +28,14 @@ void serial_write(const char *s) {
             serial_putc('\r');
         serial_putc(*s);
     }
+}
+
+void klog(const char *fmt, ...) {
+    char buf[256];
+    va_list ap;
+    va_start(ap, fmt);
+    kvsnprintf(buf, sizeof buf, fmt, ap);
+    va_end(ap);
+    serial_write(buf);
+    serial_write("\n");
 }
