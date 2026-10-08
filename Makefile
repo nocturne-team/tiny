@@ -30,7 +30,7 @@ ISO    := $(BUILD)/tiny.iso
 
 QEMUFLAGS := -M q35 -m 512M -serial stdio -no-reboot -device qemu-xhci,id=xhci
 
-.PHONY: all iso run run-uefi shots test smoke clean distclean
+.PHONY: all iso run run-usb run-uefi shots test smoke clean distclean
 all: $(ISO)
 iso: $(ISO)
 
@@ -66,6 +66,10 @@ $(ISO): $(KERNEL) limine.conf $(LIMINE_DIR)/limine
 
 run: $(ISO)
 	$(QEMU) $(QEMUFLAGS) -cdrom $(ISO) -boot d
+
+run-usb: $(ISO)
+	$(QEMU) -M q35,i8042=off -m 512M -serial stdio -no-reboot \
+		-device qemu-xhci,id=xhci -device usb-kbd,bus=xhci.0 -cdrom $(ISO) -boot d
 
 $(BUILD)/ovmf-vars.fd:
 	@mkdir -p $(BUILD)
@@ -145,6 +149,7 @@ SMOKE_EXPECT += "edid: "
 SMOKE_EXPECT += "pages: "
 SMOKE_EXPECT += "xhci: .* running" "usb: 1 xHCI controller, 0 keyboards"
 # (add "SMOKE_EXPECT += \"pattern\"" lines above this comment)
+KEYTEST := tools/qemu-keytest.py build/smoke-keys/tiny.iso
 
 smoke:
 	$(MAKE) --no-print-directory BUILD=build/smoke KDEFS=-DSMOKE iso
@@ -161,6 +166,11 @@ smoke:
 	$(MAKE) --no-print-directory BUILD=build/smoke-off KDEFS="-DSMOKE -DSMOKE_SHUTDOWN" iso
 	tests/smoke.sh build/smoke-off/tiny.iso bios shutdown
 	tests/smoke.sh build/smoke-off/tiny.iso uefi shutdown
+	$(MAKE) --no-print-directory BUILD=build/smoke-keys KDEFS="-DSMOKE -DSMOKE_KEYS" iso
+	$(KEYTEST) -device usb-kbd,bus=xhci.0 -- 'wait:keyboard 0627:' key:f3 'wait:ui: tab 3'
+	$(KEYTEST) --uefi -device usb-kbd,bus=xhci.0 -- 'wait:keyboard 0627:' key:f3 'wait:ui: tab 3'
+	$(KEYTEST) -device usb-kbd,bus=xhci.0 -device usb-kbd,bus=xhci.0 -device usb-tablet,bus=xhci.0 -- \
+		'wait:keyboard 0627:' 'wait:keyboard 0627:' 'wait:ignored' key:f3 'wait:ui: tab 3' 'count:1:ignored'
 
 clean:
 	rm -rf build

@@ -203,3 +203,80 @@ void usb_init(const struct pci_list *pci) {
 size_t usb_keyboards(void) {
     return kbd_count;
 }
+
+#define KEYQ 32
+
+static struct key_event queue[KEYQ];
+static size_t q_head, q_len;
+
+static void push(const struct key_event *e) {
+    if (q_len < KEYQ) {
+        queue[(q_head + q_len) % KEYQ] = *e;
+        q_len++;
+    }
+}
+
+static bool pop(struct key_event *out) {
+    if (!q_len)
+        return false;
+    *out = queue[q_head];
+    q_head = (q_head + 1) % KEYQ;
+    q_len--;
+    return true;
+}
+
+static void handle_report(struct usb_dev *u) {
+    struct xhci_dev *d = &u->xd;
+    d->intr_done = false;
+    if (!xhci_ok(d->intr_cc)) {
+        if (++u->errors > 8) {
+            u->stopped = true;
+            klog("usb: port %s: too many transfer errors (cc %u), stopped", u->name, d->intr_cc);
+            return;
+        }
+        xhci_ep_reset(d, d->intr_dci);
+        xhci_intr_queue(d);
+        return;
+    }
+    u->errors = 0;
+    const uint8_t *r = d->buf + XHCI_REPORT_OFF;
+    if (u->kind == DEV_KBD) {
+        struct key_event ev[6];
+        size_t n = hid_kbd_report(&u->kbd, r, d->intr_actual, tsc_ms(), ev);
+        for (size_t i = 0; i < n; i++)
+            push(&ev[i]);
+        xhci_intr_queue(d);
+    }
+}
+
+bool usb_poll(struct key_event *out) {
+    if (pop(out))
+        return true;
+    for (size_t i = 0; i < hc_count; i++) {
+        struct usb_hc *h = &hcs[i];
+        xhci_poll(&h->x);
+        if (h->x.dead && !h->dead_handled) {
+            h->dead_handled = true;
+            for (unsigned p = 1; p <= h->x.max_ports; p++) {
+                if (h->port_dev[p]) {
+                    dev_remove(h->port_dev[p]);
+                    h->port_dev[p] = NULL;
+                }
+            }
+        }
+    }
+    for (size_t i = 0; i < USB_MAX_DEVS; i++) {
+        struct usb_dev *u = &devs[i];
+        if (u->used && u->xd.intr_done && !u->stopped)
+            handle_report(u);
+    }
+    if (tsc_hz()) {
+        uint64_t now = tsc_ms();
+        for (size_t i = 0; i < USB_MAX_DEVS; i++) {
+            struct key_event e;
+            if (devs[i].used && devs[i].kind == DEV_KBD && hid_kbd_tick(&devs[i].kbd, now, &e))
+                push(&e);
+        }
+    }
+    return pop(out);
+}

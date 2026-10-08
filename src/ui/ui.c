@@ -36,7 +36,6 @@
 
 static struct page *pages;
 static size_t page_count, cur;
-static bool keyboard;
 static char pending;  // 'r' or 's' while waiting for confirmation
 static int cols, rows;
 
@@ -142,8 +141,8 @@ static void draw_footer(void) {
     } else if (pending == 's') {
         msg = "Press S again to SHUT DOWN - any other key cancels";
         attr = A_ALERT;
-    } else if (!keyboard) {
-        msg = "No PS/2 keyboard - USB input not yet supported";
+    } else if (!input_have_keyboard()) {
+        msg = "No keyboard found - plug in a USB keyboard";
         attr = A_ALERT;
     }
     gfx_fill(1, rows - 2, cols - 2, 1, ' ', A_TEXT);
@@ -166,6 +165,7 @@ static void handle(const struct key_event *k) {
         return;
     }
 
+    size_t before = cur;
     size_t vis = visible();
     long page_step = vis > 1 ? (long)vis - 1 : 1;
     struct page *p = &pages[cur];
@@ -192,16 +192,21 @@ static void handle(const struct key_event *k) {
         break;
     default: break;
     }
+    if (cur != before) {
+        klog("ui: tab %zu", cur + 1);
+#ifdef SMOKE_KEYS
+        qemu_debug_exit(0x10);
+#endif
+    }
     draw_tabs();
     draw_clock();
     draw_content();
     draw_footer();
 }
 
-void ui_run(struct page *pg, size_t count, bool have_keyboard) {
+void ui_run(struct page *pg, size_t count) {
     pages = pg;
     page_count = count;
-    keyboard = have_keyboard;
     cols = gfx_cols();
     rows = gfx_rows();
 
@@ -214,7 +219,7 @@ void ui_run(struct page *pg, size_t count, bool have_keyboard) {
     klog("UI READY");
 #if defined(SMOKE_SHUTDOWN)
     power_shutdown();
-#elif defined(SMOKE)
+#elif defined(SMOKE) && !defined(SMOKE_KEYS)
     qemu_debug_exit(0x10);
 #endif
 
@@ -225,6 +230,11 @@ void ui_run(struct page *pg, size_t count, bool have_keyboard) {
         struct key_event k;
         while (input_poll(&k)) {
             handle(&k);
+            dirty = true;
+        }
+        if (input_keyboard_changed()) {
+            klog("ui: keyboard %s", input_have_keyboard() ? "found" : "missing");
+            draw_footer();
             dirty = true;
         }
         bool tick = hz ? rdtsc() - last >= hz / 2 : ++spins >= (1ul << 22);

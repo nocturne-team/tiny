@@ -12,8 +12,12 @@ struct key_event {
     bool repeat;  // typematic repeat of a key that is still held down
 };
 
-// Keyboard backend (PS/2 today; a USB backend can implement the same pair).
-// input_init returns false when no keyboard controller responds.
-bool input_init(void);
+// Input front: merges the PS/2 and USB backends.
+// Call after usb_init so the PS/2 probe sees the 8042 without firmware emulation.
+void input_init(void);
 // Non-blocking: returns true and fills *out when a key was pressed.
 bool input_poll(struct key_event *out);
+// True while a PS/2 controller responded or a USB keyboard is attached.
+bool input_have_keyboard(void);
+// True once each time input_have_keyboard() flips.
+bool input_keyboard_changed(void);

@@ -1,4 +1,4 @@
-#include "input/input.h"
+#include "input/ps2.h"
 #include "arch/x86.h"
 #include "input/ps2_decode.h"
 #include "lib/serial.h"
@@ -49,7 +49,7 @@ static int read_data(void) {
     return wait_read() ? inb(PS2_DATA) : -1;
 }
 
-bool input_init(void) {
+bool ps2_init(void) {
     if (inb(PS2_STATUS) == 0xFF) {
         klog("ps2: no controller (status port reads 0xff)");
         return false;
@@ -84,7 +84,7 @@ fail:
     return false;
 }
 
-bool input_poll(struct key_event *out) {
+bool ps2_poll(struct key_event *out) {
     if (!present)
         return false;
     // Bounded so a wedged controller (OUT_FULL stuck on) cannot freeze the UI.

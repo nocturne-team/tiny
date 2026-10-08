@@ -43,7 +43,6 @@ void kmain(void) {
     __asm__ volatile("ud2");
 #endif
 
-    bool keyboard = input_init();
     cpu_probe(&cpu);
     klog("cpu: %s | %s | family %u model %u stepping %u | %lu logical | %zu features, %zu caches",
          cpu.vendor, cpu.brand, cpu.sig.family, cpu.sig.model, cpu.sig.stepping,
@@ -61,6 +60,7 @@ void kmain(void) {
     klog("pci: %zu devices%s", pci.count, pci.truncated ? " (truncated)" : "");
     if (pages_init())
         usb_init(&pci);
+    input_init();
     fw_probe(&fw);
     power_init(&fw.acpi);
 
@@ -72,5 +72,5 @@ void kmain(void) {
     tab_about_build(&pages[4]);
     klog("PROBE OK");
 
-    ui_run(pages, 5, keyboard);
+    ui_run(pages, 5);
 }
