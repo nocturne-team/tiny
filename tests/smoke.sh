@@ -5,6 +5,7 @@
 #   panic     log has "PANIC: #UD"; exit via isa-debug-exit 0x11 (status 35)
 #   shutdown  log has "power: ACPI S5"; QEMU powered off (status 0)
 # Every extra PATTERN must also appear in the log.
+#   QEMU_EXTRA (env) extra QEMU arguments; default "-device qemu-xhci,id=xhci"
 set -u
 iso=$1 fw=$2 expect=$3
 machine=q35
@@ -25,7 +26,7 @@ fi
 # shellcheck disable=SC2086
 timeout 90 qemu-system-x86_64 -M "$machine" -m 512M -display none -no-reboot \
     -serial "file:$log" -device isa-debug-exit,iobase=0xf4,iosize=0x04 \
-    $fwflags -cdrom "$iso" -boot d
+    $fwflags ${QEMU_EXTRA--device qemu-xhci,id=xhci} -cdrom "$iso" -boot d
 status=$?
 
 fail() {

@@ -15,6 +15,7 @@
 #include "ui/page.h"
 #include "ui/tabs.h"
 #include "ui/ui.h"
+#include "usb/usb.h"
 
 static struct cpu_info cpu;
 static struct fw_info fw;
@@ -58,7 +59,8 @@ void kmain(void) {
     }
     pci_scan(pci_config_read, &pci);
     klog("pci: %zu devices%s", pci.count, pci.truncated ? " (truncated)" : "");
-    pages_init();
+    if (pages_init())
+        usb_init(&pci);
     fw_probe(&fw);
     power_init(&fw.acpi);
 

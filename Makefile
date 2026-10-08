@@ -28,7 +28,7 @@ OBJS   := $(CSRCS:%.c=$(BUILD)/%.o) $(ASRCS:%.asm=$(BUILD)/%.asm.o)
 KERNEL := $(BUILD)/kernel.elf
 ISO    := $(BUILD)/tiny.iso
 
-QEMUFLAGS := -M q35 -m 512M -serial stdio -no-reboot
+QEMUFLAGS := -M q35 -m 512M -serial stdio -no-reboot -device qemu-xhci,id=xhci
 
 .PHONY: all iso run run-uefi shots test smoke clean distclean
 all: $(ISO)
@@ -143,6 +143,7 @@ SMOKE_EXPECT += "pci: "
 SMOKE_EXPECT += "memory devices"
 SMOKE_EXPECT += "edid: "
 SMOKE_EXPECT += "pages: "
+SMOKE_EXPECT += "xhci: .* running" "usb: 1 xHCI controller"
 # (add "SMOKE_EXPECT += \"pattern\"" lines above this comment)
 
 smoke:
