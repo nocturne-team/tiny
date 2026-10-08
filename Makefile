@@ -95,6 +95,9 @@ TESTS += test_acpi
 deps_test_acpi := src/info/acpi.c src/lib/fmt.c
 TESTS += test_smbios
 deps_test_smbios := src/info/smbios.c src/lib/fmt.c
+TESTS += test_page test_tabs
+deps_test_page := src/ui/page.c src/lib/fmt.c
+deps_test_tabs := src/ui/tab_cpu.c src/ui/tab_mem.c src/ui/tab_fw.c src/ui/page.c src/info/mem.c src/lib/fmt.c
 # (add "TESTS += test_x" and "deps_test_x := ..." lines above this comment)
 
 define TEST_RULE

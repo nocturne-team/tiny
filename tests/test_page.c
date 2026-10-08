@@ -1,0 +1,95 @@
+#include "test.h"
+#include "ui/page.h"
+
+static struct page p;
+
+static void expect_kv(const char *line, const char *key, const char *value) {
+    size_t k = strlen(key);
+    CHECK(strncmp(line, key, k) == 0);
+    for (size_t i = k; i < PAGE_KEY_WIDTH; i++)
+        CHECK(line[i] == ' ');
+    CHECK_STR(line + PAGE_KEY_WIDTH, value);
+}
+
+static void test_add_and_kv(void) {
+    page_clear(&p);
+    page_add(&p, STYLE_HEAD, "Processor %d", 1);
+    page_kv(&p, "Vendor", "%s", "GenuineIntel");
+    page_blank(&p);
+    page_kv(&p, "AVeryLongKeyNameIndeed", "x");
+    CHECK_EQ(p.count, 4);
+    CHECK_STR(p.lines[0].text, "Processor 1");
+    CHECK_EQ(p.lines[0].style, STYLE_HEAD);
+    expect_kv(p.lines[1].text, "Vendor", "GenuineIntel");
+    CHECK_STR(p.lines[2].text, "");
+    CHECK(strncmp(p.lines[3].text, "AVeryLongKeyNam ", 16) == 0);  // key cut to 15
+    CHECK_STR(p.lines[3].text + 16, "x");
+}
+
+static void test_long_value(void) {
+    char big[300];
+    memset(big, 'a', sizeof big - 1);
+    big[sizeof big - 1] = '\0';
+    page_clear(&p);
+    page_add(&p, STYLE_TEXT, "%s", big);
+    page_kv(&p, "Key", "%s", big);
+    CHECK_EQ(strlen(p.lines[0].text), PAGE_LINE_LEN - 1);
+    CHECK_EQ(strlen(p.lines[1].text), PAGE_LINE_LEN - 1);
+}
+
+static void test_overflow(void) {
+    page_clear(&p);
+    for (int i = 0; i < 400; i++)
+        page_add(&p, STYLE_TEXT, "line %d", i);
+    CHECK_EQ(p.count, PAGE_MAX_LINES);
+    CHECK(p.truncated);
+    CHECK_EQ(p.lines[PAGE_MAX_LINES - 1].style, STYLE_WARN);
+    CHECK(strncmp(p.lines[PAGE_MAX_LINES - 1].text, "...", 3) == 0);
+    CHECK_STR(p.lines[PAGE_MAX_LINES - 2].text, "line 298");
+}
+
+static void test_scroll(void) {
+    page_clear(&p);
+    for (int i = 0; i < 10; i++)
+        page_add(&p, STYLE_TEXT, "%d", i);
+    page_scroll(&p, 100, 4);
+    CHECK_EQ(p.scroll, 6);
+    page_scroll(&p, -3, 4);
+    CHECK_EQ(p.scroll, 3);
+    page_scroll(&p, -100, 4);
+    CHECK_EQ(p.scroll, 0);
+    page_scroll_to(&p, true, 4);
+    CHECK_EQ(p.scroll, 6);
+    page_scroll_to(&p, false, 4);
+    CHECK_EQ(p.scroll, 0);
+    page_scroll(&p, 5, 20);  // fits on screen: never scrolls
+    CHECK_EQ(p.scroll, 0);
+}
+
+static void test_wrap(void) {
+    const char *words[] = { "sse", "sse2", "avx" };
+    page_clear(&p);
+    page_wrap_words(&p, "Features", words, 3, 26);  // 10 columns for words
+    CHECK_EQ(p.count, 2);
+    expect_kv(p.lines[0].text, "Features", "sse sse2");
+    expect_kv(p.lines[1].text, "", "avx");
+
+    page_clear(&p);
+    page_wrap_words(&p, "Features", words, 0, 80);
+    CHECK_EQ(p.count, 1);
+    expect_kv(p.lines[0].text, "Features", "");
+
+    const char *longw[] = { "averyveryverylongword" };
+    page_clear(&p);
+    page_wrap_words(&p, "", longw, 1, 20);  // 8 columns minimum
+    expect_kv(p.lines[0].text, "", "averyver");
+}
+
+int main(void) {
+    test_add_and_kv();
+    test_long_value();
+    test_overflow();
+    test_scroll();
+    test_wrap();
+    TEST_MAIN_END();
+}
