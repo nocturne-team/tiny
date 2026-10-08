@@ -3,8 +3,10 @@
 #include "boot.h"
 #include "gfx/gfx.h"
 #include "info/cpu.h"
+#include "info/mem.h"
 #include "info/rtc.h"
 #include "input/input.h"
+#include "lib/fmt.h"
 #include "lib/serial.h"
 
 static void demo_screen(void) {
@@ -51,6 +53,15 @@ void kmain(void) {
     klog("cpu: %s | %s | family %u model %u stepping %u | %lu logical | %zu features, %zu caches",
          cpu.vendor, cpu.brand, cpu.sig.family, cpu.sig.model, cpu.sig.stepping,
          (unsigned long)cpu.cpu_count, cpu.feature_count, cpu.cache_count);
+    if (bootinfo.memmap) {
+        struct mem_summary mem;
+        char avail[24];
+        mem_summarize(bootinfo.memmap->entries, bootinfo.memmap->entry_count, &mem);
+        fmt_size(avail, sizeof avail, mem.available);
+        klog("mem: %s available, %zu map entries", avail, mem.entries);
+    } else {
+        klog("mem: no memory map from bootloader");
+    }
     demo_screen();
     klog("PROBE OK");
     klog("UI READY");

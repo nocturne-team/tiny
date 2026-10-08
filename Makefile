@@ -89,6 +89,8 @@ TESTS += test_ps2
 deps_test_ps2 := src/input/ps2_decode.c
 TESTS += test_cpu
 deps_test_cpu := src/info/cpu_decode.c
+TESTS += test_mem
+deps_test_mem := src/info/mem.c
 # (add "TESTS += test_x" and "deps_test_x := ..." lines above this comment)
 
 define TEST_RULE
@@ -107,6 +109,7 @@ SMOKE_EXPECT :=
 SMOKE_EXPECT += "rtc: 20"
 SMOKE_EXPECT += "ps2: keyboard controller ok"
 SMOKE_EXPECT += "tsc: " "cpu: "
+SMOKE_EXPECT += "MiB available"
 # (add "SMOKE_EXPECT += \"pattern\"" lines above this comment)
 
 smoke:
