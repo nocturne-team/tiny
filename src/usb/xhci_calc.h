@@ -29,3 +29,11 @@ uint32_t usb_route_append(uint32_t route, unsigned depth, uint8_t port);
 // "2" for root port 2, "2.1" for port 1 of a hub on root port 2.
 void usb_port_name(char *buf, size_t cap, uint8_t root_port, uint32_t route);
 const char *usb_speed_name(uint8_t speed);
+
+// How to restart an interrupt IN endpoint after its transfer completed with `cc`.
+enum xhci_recovery {
+    XHCI_RECOVER_NONE,  // success or short packet
+    XHCI_RECOVER_SOFT,  // transaction error: Reset Endpoint keeping the data toggle (TSP)
+    XHCI_RECOVER_HALT,  // stall, babble, anything else: reset both host and device toggles
+};
+enum xhci_recovery xhci_intr_recovery(uint8_t cc);

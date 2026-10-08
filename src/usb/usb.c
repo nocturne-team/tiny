@@ -122,8 +122,16 @@ static bool hub_port_status(struct xhci_dev *d, uint8_t port, uint16_t *status, 
 static void service_hub_port(struct usb_dev *h, uint8_t port, bool debounce) {
     struct xhci_dev *d = &h->xd;
     uint16_t status, change;
-    if (!port || port > h->nports || !hub_port_status(d, port, &status, &change))
+    if (!port || port > h->nports)
         return;
+    if (!hub_port_status(d, port, &status, &change)) {
+        // Unreadable port: leave it alone until the hub is replugged, rather than
+        // paying a control-transfer timeout on every status interrupt.
+        if (!(h->skip & (1u << port)))
+            klog("usb: port %s.%u: status unreadable, ignored", h->name, port);
+        h->skip |= (uint16_t)(1u << port);
+        return;
+    }
     for (unsigned b = 0; b < 5; b++)  // acknowledge C_PORT_CONNECTION .. C_PORT_RESET
         if (change & (1u << b))
             xhci_control(d, 0x23, REQ_CLEAR_FEATURE, (uint16_t)(HUB_C_PORT_CONNECTION + b), port, 0);
@@ -146,7 +154,9 @@ static void service_hub_port(struct usb_dev *h, uint8_t port, bool debounce) {
     bool reset_done = false;
     for (int i = 0; i < 50 && !reset_done; i++) {
         mdelay(10);
-        reset_done = hub_port_status(d, port, &status, &change) && (change & HUB_CH_RESET);
+        if (!hub_port_status(d, port, &status, &change))
+            break;  // hub stopped answering: give up now, not after 50 timeouts
+        reset_done = change & HUB_CH_RESET;
     }
     char name[16];
     usb_port_name(name, sizeof name, d->root_port, usb_route_append(d->route, 0, port));
@@ -343,13 +353,20 @@ static bool pop(struct key_event *out) {
 static void handle_report(struct usb_dev *u) {
     struct xhci_dev *d = &u->xd;
     d->intr_done = false;
-    if (!xhci_ok(d->intr_cc)) {
-        if (++u->errors > 8) {
+    enum xhci_recovery rec = xhci_intr_recovery(d->intr_cc);
+    if (rec != XHCI_RECOVER_NONE) {
+        if (++u->errors == 1)
+            klog("usb: port %s: transfer error (cc %u), recovering", u->name, d->intr_cc);
+        if (u->kind == DEV_KBD)
+            hid_kbd_cancel_repeat(&u->kbd);  // the lost report may have been a release
+        if (u->errors > 8) {
             u->stopped = true;
             klog("usb: port %s: too many transfer errors (cc %u), stopped", u->name, d->intr_cc);
             return;
         }
-        xhci_ep_reset(d, d->intr_dci);
+        xhci_ep_reset(d, d->intr_dci, rec == XHCI_RECOVER_SOFT);
+        if (rec == XHCI_RECOVER_HALT)  // clear the device's halt too, so both ends restart at DATA0
+            xhci_control(d, 0x02, REQ_CLEAR_FEATURE, 0 /* ENDPOINT_HALT */, (uint16_t)(0x80 | (d->intr_dci - 1) / 2), 0);
         xhci_intr_queue(d);
         return;
     }

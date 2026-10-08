@@ -60,6 +60,8 @@ struct xhci_dev {
     bool intr_done;
     uint8_t intr_cc;
     uint16_t intr_actual;
+    // A command or transfer timed out and the controller may still own our pages: never recycle them.
+    bool leak;
 };
 
 struct xhci {
@@ -108,5 +110,6 @@ bool xhci_configure(struct xhci_dev *d, uint8_t ep_addr, uint16_t mps, uint8_t b
                     const struct xhci_hub_info *hub);
 // Queues one interrupt transfer of d->intr_len bytes into d->buf + XHCI_REPORT_OFF.
 void xhci_intr_queue(struct xhci_dev *d);
-// Reset Endpoint + Set TR Dequeue Pointer, after a halt.
-void xhci_ep_reset(struct xhci_dev *d, uint8_t dci);
+// Reset Endpoint + Set TR Dequeue Pointer, after a halt. keep_toggle sets TSP (soft retry
+// after a transaction error, when the device's data toggle did not advance).
+void xhci_ep_reset(struct xhci_dev *d, uint8_t dci, bool keep_toggle);

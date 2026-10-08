@@ -138,5 +138,12 @@ int main(void) {
     CHECK_EQ(keys(20, 0x51, 0, 0), 0);
     CHECK(!hid_kbd_tick(&k, 10000, &e));
 
+    // A transfer error may have eaten the release report: repeat stops, presses still work.
+    reset();
+    keys(0, 0x51, 0, 0);
+    hid_kbd_cancel_repeat(&k);
+    CHECK(!hid_kbd_tick(&k, 10000, &e));
+    CHECK_EQ(keys(10, 0x51, 0x4E, 0), 1);
+    CHECK_EQ(ev[0].key, KEY_PGDN);
     TEST_MAIN_END();
 }

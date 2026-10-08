@@ -20,3 +20,5 @@ size_t hid_kbd_report(struct hid_kbd *k, const uint8_t *r, size_t len, uint64_t 
                       struct key_event *out);
 // Typematic: true and fills *out (repeat = true) when the held key is due.
 bool hid_kbd_tick(struct hid_kbd *k, uint64_t now_ms, struct key_event *out);
+// Stops any auto-repeat: after a transfer error the release report may be lost.
+void hid_kbd_cancel_repeat(struct hid_kbd *k);

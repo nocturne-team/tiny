@@ -56,5 +56,13 @@ int main(void) {
     CHECK_STR(usb_speed_name(0), "?");
     CHECK_STR(usb_speed_name(9), "?");
 
+    // Interrupt endpoint error recovery: transaction errors keep the data toggle
+    // (soft retry); stalls, babble and anything else reset both ends.
+    CHECK_EQ(xhci_intr_recovery(1), XHCI_RECOVER_NONE);
+    CHECK_EQ(xhci_intr_recovery(13), XHCI_RECOVER_NONE);
+    CHECK_EQ(xhci_intr_recovery(4), XHCI_RECOVER_SOFT);
+    CHECK_EQ(xhci_intr_recovery(6), XHCI_RECOVER_HALT);
+    CHECK_EQ(xhci_intr_recovery(3), XHCI_RECOVER_HALT);
+    CHECK_EQ(xhci_intr_recovery(0), XHCI_RECOVER_HALT);
     TEST_MAIN_END();
 }

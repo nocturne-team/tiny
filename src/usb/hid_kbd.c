@@ -80,3 +80,7 @@ bool hid_kbd_tick(struct hid_kbd *k, uint64_t now_ms, struct key_event *out) {
     out->repeat = true;
     return true;
 }
+
+void hid_kbd_cancel_repeat(struct hid_kbd *k) {
+    k->held = 0;
+}

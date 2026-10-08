@@ -47,7 +47,7 @@
 enum {
     TRB_NORMAL = 1, TRB_SETUP = 2, TRB_DATA = 3, TRB_STATUS = 4, TRB_LINK = 6,
     TRB_ENABLE_SLOT = 9, TRB_DISABLE_SLOT = 10, TRB_ADDRESS_DEVICE = 11, TRB_CONFIGURE_EP = 12,
-    TRB_EVALUATE_CTX = 13, TRB_RESET_EP = 14, TRB_SET_TR_DEQ = 16, TRB_NOOP_CMD = 23,
+    TRB_EVALUATE_CTX = 13, TRB_RESET_EP = 14, TRB_STOP_EP = 15, TRB_SET_TR_DEQ = 16, TRB_NOOP_CMD = 23,
     TRB_EV_TRANSFER = 32, TRB_EV_CMD_DONE = 33, TRB_EV_PORT = 34,
 };
 #define TRB_CYCLE (1u << 0)
@@ -55,6 +55,7 @@ enum {
 #define TRB_ISP (1u << 2)
 #define TRB_IOC (1u << 5)
 #define TRB_IDT (1u << 6)
+#define TRB_TSP (1u << 9)  // Reset Endpoint: preserve the data toggle
 #define TRB_TYPE(t) ((uint32_t)(t) << 10)
 #define TRB_DIR_IN (1u << 16)
 #define TRB_EP(e) ((uint32_t)(e) << 16)
@@ -66,6 +67,7 @@ enum {
 #define EP_TYPE_INTR_IN 7u
 
 #define MMIO_MAX (1ull << 20)
+#define CC_CONTEXT_STATE 19  // e.g. Stop Endpoint on an endpoint that is not running
 
 static uint32_t rd(volatile uint8_t *base, uint32_t off) {
     return *(volatile uint32_t *)(base + off);
@@ -517,18 +519,40 @@ void xhci_dev_close(struct xhci_dev *d) {
     struct xhci *x = d->x;
     if (!x)
         return;
+    // Pages are recycled only once the controller has let go of the slot; otherwise
+    // a late DMA could land in another device's ring. Leaking is safe: the pool is bounded.
+    bool released = !d->slot || x->dead;
     if (d->slot) {
         if (!x->dead)
-            command(x, 0, TRB_TYPE(TRB_DISABLE_SLOT) | TRB_SLOT(d->slot), NULL);
+            released = command(x, 0, TRB_TYPE(TRB_DISABLE_SLOT) | TRB_SLOT(d->slot), NULL) == XHCI_CC_SUCCESS;
         x->dcbaa[d->slot] = 0;
         x->slots[d->slot] = NULL;
     }
-    put_page(x, d->out_phys);
-    put_page(x, d->in_phys);
-    put_page(x, d->buf_phys);
-    put_page(x, d->ep0.phys);
-    put_page(x, d->intr.phys);
+    if (released && !d->leak) {
+        put_page(x, d->out_phys);
+        put_page(x, d->in_phys);
+        put_page(x, d->buf_phys);
+        put_page(x, d->ep0.phys);
+        put_page(x, d->intr.phys);
+    }
     memset(d, 0, sizeof *d);
+}
+
+static void set_dequeue(struct xhci_dev *d, uint8_t dci) {
+    struct xhci_ring *r = dci == 1 ? &d->ep0 : &d->intr;
+    command(d->x, (r->phys + (uint64_t)r->idx * sizeof(struct xhci_trb)) | r->cycle,
+            TRB_TYPE(TRB_SET_TR_DEQ) | TRB_EP(dci) | TRB_SLOT(d->slot), NULL);
+}
+
+// A TD that never completed: stop the endpoint and skip everything queued on it, so
+// later transfers do not wait behind it and its buffer is not written later.
+static void ep_abort(struct xhci_dev *d, uint8_t dci) {
+    uint8_t cc = command(d->x, 0, TRB_TYPE(TRB_STOP_EP) | TRB_EP(dci) | TRB_SLOT(d->slot), NULL);
+    if (cc != XHCI_CC_SUCCESS && cc != CC_CONTEXT_STATE) {
+        d->leak = true;  // could not take the TD back
+        return;
+    }
+    set_dequeue(d, dci);
 }
 
 uint8_t xhci_control(struct xhci_dev *d, uint8_t reqtype, uint8_t req, uint16_t value,
@@ -552,8 +576,10 @@ uint8_t xhci_control(struct xhci_dev *d, uint8_t reqtype, uint8_t req, uint16_t 
                                          TRB_TYPE(TRB_STATUS) | TRB_IOC | (in && len ? 0 : TRB_DIR_IN));
     doorbell(x, d->slot, 1);
     uint8_t cc = wait_event(x, 1000);
-    if (cc && !xhci_ok(cc))
-        xhci_ep_reset(d, 1);  // stalled or failed: un-halt EP0 and skip the rest of the TD
+    if (!cc)
+        ep_abort(d, 1);  // timed out: take the TD back
+    else if (!xhci_ok(cc))
+        xhci_ep_reset(d, 1, false);  // stalled or failed: un-halt EP0 and skip the rest of the TD
     return cc;
 }
 
@@ -581,9 +607,10 @@ bool xhci_configure(struct xhci_dev *d, uint8_t ep_addr, uint16_t mps, uint8_t b
     ep[2] = (uint32_t)d->intr.phys | 1;
     ep[3] = (uint32_t)(d->intr.phys >> 32);
     ep[4] = 8 | (uint32_t)mps << 16;  // average TRB length, max ESIT payload
-    if (command(x, d->in_phys, TRB_TYPE(TRB_CONFIGURE_EP) | TRB_SLOT(d->slot), NULL) != XHCI_CC_SUCCESS) {
-        put_page(x, d->intr.phys);
-        memset(&d->intr, 0, sizeof d->intr);
+    uint8_t cc = command(x, d->in_phys, TRB_TYPE(TRB_CONFIGURE_EP) | TRB_SLOT(d->slot), NULL);
+    if (cc != XHCI_CC_SUCCESS) {
+        if (!cc)
+            d->leak = true;  // the controller may still adopt the ring; xhci_dev_close frees the rest
         return false;
     }
     d->intr_dci = dci;
@@ -598,9 +625,7 @@ void xhci_intr_queue(struct xhci_dev *d) {
     doorbell(d->x, d->slot, d->intr_dci);
 }
 
-void xhci_ep_reset(struct xhci_dev *d, uint8_t dci) {
-    struct xhci_ring *r = dci == 1 ? &d->ep0 : &d->intr;
-    command(d->x, 0, TRB_TYPE(TRB_RESET_EP) | TRB_EP(dci) | TRB_SLOT(d->slot), NULL);
-    command(d->x, (r->phys + (uint64_t)r->idx * sizeof(struct xhci_trb)) | r->cycle,
-            TRB_TYPE(TRB_SET_TR_DEQ) | TRB_EP(dci) | TRB_SLOT(d->slot), NULL);
+void xhci_ep_reset(struct xhci_dev *d, uint8_t dci, bool keep_toggle) {
+    command(d->x, 0, TRB_TYPE(TRB_RESET_EP) | (keep_toggle ? TRB_TSP : 0) | TRB_EP(dci) | TRB_SLOT(d->slot), NULL);
+    set_dequeue(d, dci);
 }

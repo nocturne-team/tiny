@@ -57,3 +57,15 @@ const char *usb_speed_name(uint8_t speed) {
     static const char *const names[] = { "?", "fs", "ls", "hs", "ss", "ss+" };
     return speed < sizeof names / sizeof names[0] ? names[speed] : "?";
 }
+
+enum xhci_recovery xhci_intr_recovery(uint8_t cc) {
+    switch (cc) {
+    case 1:   // success
+    case 13:  // short packet
+        return XHCI_RECOVER_NONE;
+    case 4:   // USB transaction error: the device's toggle did not move
+        return XHCI_RECOVER_SOFT;
+    default:
+        return XHCI_RECOVER_HALT;
+    }
+}
