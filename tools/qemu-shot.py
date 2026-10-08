@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """Boot a tiny ISO headless in QEMU, press keys, and save PNG screenshots.
 
-usage: tools/qemu-shot.py ISO OUTDIR [--uefi] [STEP ...]
+usage: tools/qemu-shot.py ISO OUTDIR [--uefi] [--usb-kbd] [STEP ...]
+
+--usb-kbd: PS/2 off; keys go to a USB keyboard on an xHCI.
 
 Waits for "UI READY" on the serial port, then runs each STEP in order:
   shot:NAME   save OUTDIR/NAME.png
@@ -64,7 +66,8 @@ def wait_for(path, text, timeout):
 def main():
     args = sys.argv[1:]
     uefi = '--uefi' in args
-    args = [a for a in args if a != '--uefi']
+    usb = '--usb-kbd' in args
+    args = [a for a in args if a not in ('--uefi', '--usb-kbd')]
     if len(args) < 2:
         sys.exit(__doc__)
     iso, outdir, steps = args[0], args[1], args[2:]
@@ -77,6 +80,9 @@ def main():
            '-serial', 'file:' + serial_path,
            '-qmp', 'unix:%s,server=on,wait=off' % qmp_path,
            '-cdrom', iso, '-boot', 'd']
+    if usb:
+        cmd[cmd.index('q35')] = 'q35,i8042=off'
+        cmd += ['-device', 'qemu-xhci,id=xhci', '-device', 'usb-kbd,bus=xhci.0']
     if uefi:
         vars_copy = os.path.join(tmp, 'vars.fd')
         shutil.copy(OVMF_VARS, vars_copy)

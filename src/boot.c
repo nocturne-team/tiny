@@ -29,6 +29,9 @@ REQUEST static volatile struct limine_date_at_boot_request date_req = {
 REQUEST static volatile struct limine_tsc_frequency_request tsc_req = {
     .id = LIMINE_TSC_FREQUENCY_REQUEST_ID, .revision = 0 };
 
+REQUEST static volatile struct limine_executable_cmdline_request cmdline_req = {
+    .id = LIMINE_EXECUTABLE_CMDLINE_REQUEST_ID, .revision = 0 };
+
 __attribute__((used, section(".limine_requests_end")))
 static volatile uint64_t requests_end[] = LIMINE_REQUESTS_END_MARKER;
 
@@ -71,5 +74,7 @@ bool boot_init(void) {
     }
     if (tsc_req.response)
         bootinfo.tsc_hz = tsc_req.response->frequency;
+    if (cmdline_req.response)
+        bootinfo.cmdline = cmdline_req.response->cmdline;
     return true;
 }

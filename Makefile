@@ -8,6 +8,7 @@ QEMU    := qemu-system-x86_64
 
 BUILD   ?= build
 KDEFS   ?=
+LIMINE_CONF ?= limine.conf
 
 LIMINE_TAG := v11.4.1-binary
 LIMINE_DIR := limine
@@ -50,12 +51,13 @@ $(LIMINE_DIR)/limine:
 	git clone --depth=1 --branch=$(LIMINE_TAG) https://github.com/Limine-Bootloader/Limine.git $(LIMINE_DIR)
 	$(MAKE) -C $(LIMINE_DIR) CC=$(HOSTCC)
 
-$(ISO): $(KERNEL) limine.conf $(LIMINE_DIR)/limine
+$(ISO): $(KERNEL) $(LIMINE_CONF) $(LIMINE_DIR)/limine
 	rm -rf $(BUILD)/iso_root
 	mkdir -p $(BUILD)/iso_root/boot/limine $(BUILD)/iso_root/EFI/BOOT
 	cp $(KERNEL) $(BUILD)/iso_root/boot/kernel.elf
-	cp limine.conf $(LIMINE_DIR)/limine-bios.sys $(LIMINE_DIR)/limine-bios-cd.bin \
+	cp $(LIMINE_DIR)/limine-bios.sys $(LIMINE_DIR)/limine-bios-cd.bin \
 		$(LIMINE_DIR)/limine-uefi-cd.bin $(BUILD)/iso_root/boot/limine/
+	cp $(LIMINE_CONF) $(BUILD)/iso_root/boot/limine/limine.conf
 	cp $(LIMINE_DIR)/BOOTX64.EFI $(BUILD)/iso_root/EFI/BOOT/
 	xorriso -as mkisofs -quiet -R -r -J -b boot/limine/limine-bios-cd.bin \
 		-no-emul-boot -boot-load-size 4 -boot-info-table -hfsplus \
@@ -85,6 +87,7 @@ shots: $(ISO)
 	tools/qemu-shot.py $(ISO) build/shots shot:cpu right shot:memory pgdn shot:memory-pgdn \
 		f3 shot:pci f4 shot:firmware end shot:firmware-end f5 shot:about pgdn shot:about-pgdn s shot:confirm-shutdown esc shot:cancelled
 	tools/qemu-shot.py $(ISO) build/shots --uefi f3 shot:uefi-pci f4 shot:uefi-firmware
+	tools/qemu-shot.py $(ISO) build/shots --usb-kbd f3 shot:usb-pci
 
 # --- host unit tests ----------------------------------------------------------
 TESTS :=
@@ -123,6 +126,8 @@ TESTS += test_usb_desc
 deps_test_usb_desc := src/usb/usb_desc.c
 TESTS += test_xhci_calc
 deps_test_xhci_calc := src/usb/xhci_calc.c src/lib/fmt.c
+TESTS += test_cmdline
+deps_test_cmdline := src/lib/cmdline.c
 # (add "TESTS += test_x" and "deps_test_x := ..." lines above this comment)
 
 define TEST_RULE
@@ -166,6 +171,9 @@ smoke:
 	$(MAKE) --no-print-directory BUILD=build/smoke-off KDEFS="-DSMOKE -DSMOKE_SHUTDOWN" iso
 	tests/smoke.sh build/smoke-off/tiny.iso bios shutdown
 	tests/smoke.sh build/smoke-off/tiny.iso uefi shutdown
+	$(MAKE) --no-print-directory BUILD=build/smoke-nousb LIMINE_CONF=tests/limine-nousb.conf KDEFS=-DSMOKE iso
+	QEMU_EXTRA="-device qemu-xhci,id=xhci -device usb-kbd,bus=xhci.0" \
+		tests/smoke.sh build/smoke-nousb/tiny.iso bios ok q35 "usb: disabled by command line"
 	$(MAKE) --no-print-directory BUILD=build/smoke-keys KDEFS="-DSMOKE -DSMOKE_KEYS" iso
 	$(KEYTEST) -device usb-kbd,bus=xhci.0 -- 'wait:keyboard 0627:' key:f3 'wait:ui: tab 3'
 	$(KEYTEST) --uefi -device usb-kbd,bus=xhci.0 -- 'wait:keyboard 0627:' key:f3 'wait:ui: tab 3'

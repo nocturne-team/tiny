@@ -8,6 +8,7 @@
 #include "info/pci.h"
 #include "info/tsc.h"
 #include "input/input.h"
+#include "lib/cmdline.h"
 #include "lib/fmt.h"
 #include "lib/serial.h"
 #include "mm/pages.h"
@@ -58,7 +59,9 @@ void kmain(void) {
     }
     pci_scan(pci_config_read, &pci);
     klog("pci: %zu devices%s", pci.count, pci.truncated ? " (truncated)" : "");
-    if (pages_init())
+    if (cmdline_has(bootinfo.cmdline, "nousb"))
+        klog("usb: disabled by command line");
+    else if (pages_init())
         usb_init(&pci);
     input_init();
     fw_probe(&fw);

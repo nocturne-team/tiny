@@ -19,6 +19,7 @@ struct bootinfo {
     bool have_boot_time;
     int64_t boot_unix;                            // UNIX time at boot
     uint64_t tsc_hz;                              // 0 if missing
+    const char *cmdline;                          // executable command line, NULL if missing
 };
 
 extern struct bootinfo bootinfo;

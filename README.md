@@ -16,9 +16,11 @@ ACPI tables, RTC). It boots from one ISO on BIOS and UEFI machines via
 | R, then R again | reboot |
 | S, then S again | shut down (ACPI S5) |
 
-Input is PS/2 only. Most PCs emulate PS/2 for USB keyboards, but some
-UEFI-only machines don't. On those the info is still shown and the footer
-says "No PS/2 keyboard".
+Input works from a PS/2 keyboard or a USB keyboard on an xHCI controller
+(root port or behind one hub; hotplug works). On machines whose firmware has no
+PS/2 emulation, plug the keyboard in and go. If the USB driver misbehaves on
+some machine, pick **tiny (no USB)** in the boot menu: tiny then leaves the USB
+controllers alone and relies on the firmware's emulation.
 
 ## Building
 
@@ -30,8 +32,10 @@ tests), `qemu-system-x86_64` and OVMF (`/usr/share/edk2/OvmfX64`), and Python 3
 make            # build/tiny.iso (fetches Limine v11.4.1 on first run)
 make run        # QEMU, legacy BIOS
 make run-uefi   # QEMU, UEFI (OVMF)
+make run-usb    # QEMU, PS/2 off, USB keyboard on an xHCI
 make test       # host unit tests (gcc + ASan/UBSan)
-make smoke      # headless QEMU boots: BIOS, UEFI, panic, no-PS/2, no-ACPI, shutdown
+make smoke      # headless QEMU boots (BIOS, UEFI, panic, no-PS/2, no-ACPI, shutdown, nousb)
+                # plus USB key tests driven over QMP (root port, hub, hotplug)
 make shots      # screenshots of every tab into build/shots/
 ```
 
@@ -52,7 +56,9 @@ Boot from it in BIOS/CSM or UEFI mode. Secure Boot must be off.
 - `src/info/`: hardware probing and table parsing
 - `src/ui/`: pages, tabs and the main loop
 - `src/gfx/`: framebuffer text grid
-- `src/input/`: PS/2 keyboard
+- `src/input/`: PS/2 backend and the input front
+- `src/usb/`: xHCI driver, device enumeration, hubs, HID boot keyboard
+- `src/mm/`: DMA page pool and MMIO mapping
 - `src/arch/`: x86 helpers and exception handling
 - `tests/`: unit tests and smoke tests
 
