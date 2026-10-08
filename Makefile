@@ -143,7 +143,7 @@ SMOKE_EXPECT += "pci: "
 SMOKE_EXPECT += "memory devices"
 SMOKE_EXPECT += "edid: "
 SMOKE_EXPECT += "pages: "
-SMOKE_EXPECT += "xhci: .* running" "usb: 1 xHCI controller"
+SMOKE_EXPECT += "xhci: .* running" "usb: 1 xHCI controller, 0 keyboards"
 # (add "SMOKE_EXPECT += \"pattern\"" lines above this comment)
 
 smoke:
@@ -153,6 +153,8 @@ smoke:
 	$(MAKE) --no-print-directory BUILD=build/smoke-panic KDEFS="-DSMOKE -DSMOKE_PANIC" iso
 	tests/smoke.sh build/smoke-panic/tiny.iso bios panic
 	tests/smoke.sh build/smoke/tiny.iso bios ok q35,i8042=off "ps2: no controller"
+	QEMU_EXTRA="-device qemu-xhci,id=xhci -device usb-kbd,bus=xhci.0 -device usb-tablet,bus=xhci.0" \
+		tests/smoke.sh build/smoke/tiny.iso bios ok q35,i8042=off "keyboard 0627:" "class 00, ignored" "controller, 1 keyboard"
 	tests/smoke.sh build/smoke/tiny.iso bios ok q35,acpi=off "acpi: rev 0"
 	$(MAKE) --no-print-directory BUILD=build/smoke-noacpi KDEFS="-DSMOKE -DSMOKE_NO_ACPI" iso
 	tests/smoke.sh build/smoke-noacpi/tiny.iso bios ok q35 "acpi: not provided"

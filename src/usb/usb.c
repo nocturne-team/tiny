@@ -1,16 +1,182 @@
 #include "usb/usb.h"
 #include "info/tsc.h"
 #include "lib/serial.h"
+#include "lib/string.h"
+#include "usb/hid_kbd.h"
+#include "usb/usb_desc.h"
 #include "usb/xhci.h"
+#include "usb/xhci_calc.h"
 
 #define USB_MAX_HC 4
+#define USB_MAX_DEVS 16
+#define HUB_MAX_PORTS 15
+
+// Standard requests (USB 2.0 ch. 9) and HID class requests.
+#define REQ_GET_STATUS 0
+#define REQ_CLEAR_FEATURE 1
+#define REQ_SET_FEATURE 3
+#define REQ_GET_DESCRIPTOR 6
+#define REQ_SET_CONFIGURATION 9
+#define HID_SET_IDLE 0x0A
+#define HID_SET_PROTOCOL 0x0B
+
+enum dev_kind { DEV_OTHER, DEV_KBD, DEV_HUB };
+
+struct usb_dev {
+    bool used;
+    enum dev_kind kind;
+    struct xhci_dev xd;
+    char name[16];                        // "2" on a root port, "2.1" behind a hub
+    struct usb_dev *parent;               // hub, or NULL on a root port
+    uint8_t errors;                       // consecutive interrupt-transfer errors
+    bool stopped;                         // too many errors: no longer polled
+    struct hid_kbd kbd;
+    uint8_t nports;                       // hub
+    struct usb_dev *child[HUB_MAX_PORTS + 1];
+    uint16_t skip;                        // hub ports to leave alone until unplugged
+};
 
 struct usb_hc {
     struct xhci x;
+    struct usb_dev *port_dev[256];
+    uint64_t skip[4];                     // root ports to leave alone until unplugged
+    bool dead_handled;
 };
 
 static struct usb_hc hcs[USB_MAX_HC];
-static size_t hc_count;
+static size_t hc_count, kbd_count;
+static struct usb_dev devs[USB_MAX_DEVS];
+
+static void mdelay(unsigned ms) {
+    tsc_delay_us(ms * 1000ull);
+}
+
+static struct usb_dev *dev_new(void) {
+    for (size_t i = 0; i < USB_MAX_DEVS; i++) {
+        if (!devs[i].used) {
+            memset(&devs[i], 0, sizeof devs[i]);
+            devs[i].used = true;
+            return &devs[i];
+        }
+    }
+    return NULL;
+}
+
+static void dev_free(struct usb_dev *u) {
+    if (u->kind == DEV_KBD)
+        kbd_count--;
+    xhci_dev_close(&u->xd);
+    memset(u, 0, sizeof *u);
+}
+
+// Removes a device and, for a hub, everything behind it.
+static void dev_remove(struct usb_dev *u) {
+    for (unsigned p = 1; p <= HUB_MAX_PORTS; p++)
+        if (u->child[p])
+            dev_remove(u->child[p]);
+    dev_free(u);
+}
+
+static uint8_t get_desc(struct xhci_dev *d, uint16_t type_index, uint16_t len) {
+    return xhci_control(d, 0x80, REQ_GET_DESCRIPTOR, type_index, 0, len);
+}
+
+static bool kbd_setup(struct usb_dev *u, const struct usb_config_info *ci) {
+    struct xhci_dev *d = &u->xd;
+    if (!xhci_ok(xhci_control(d, 0x00, REQ_SET_CONFIGURATION, ci->value, 0, 0)))
+        return false;
+    // Boot protocol and no idle reports. Keyboards that only speak boot protocol may stall these.
+    xhci_control(d, 0x21, HID_SET_PROTOCOL, 0, ci->kbd_iface, 0);
+    xhci_control(d, 0x21, HID_SET_IDLE, 0, ci->kbd_iface, 0);
+    if (!xhci_configure(d, ci->kbd_ep.addr, ci->kbd_ep.mps, ci->kbd_ep.interval, NULL))
+        return false;
+    u->kind = DEV_KBD;
+    kbd_count++;
+    xhci_intr_queue(d);
+    return true;
+}
+
+// Addresses and identifies the device at `a`. Returns NULL (slot closed) unless it is in use.
+static struct usb_dev *dev_attach(struct xhci *x, const struct xhci_dev_addr *a, struct usb_dev *parent) {
+    char name[16];
+    usb_port_name(name, sizeof name, a->root_port, a->route);
+    struct usb_dev *u = dev_new();
+    if (!u) {
+        klog("usb: port %s: device table full, ignored", name);
+        return NULL;
+    }
+    memcpy(u->name, name, sizeof name);
+    u->parent = parent;
+    const char *sp = usb_speed_name(a->speed);
+    struct usb_device_info di;
+    struct usb_config_info ci;
+
+    if (!xhci_dev_open(x, &u->xd, a)) {
+        klog("usb: port %s: addressing failed", name);
+        goto fail;
+    }
+    if (!xhci_ok(get_desc(&u->xd, 0x0100, 18)) || !usb_desc_device(u->xd.buf, 18, &di)) {
+        klog("usb: port %s: no device descriptor", name);
+        goto fail;
+    }
+    uint16_t total = 0;
+    if (xhci_ok(get_desc(&u->xd, 0x0200, 9)))
+        total = (uint16_t)(u->xd.buf[2] | u->xd.buf[3] << 8);
+    if (total > USB_CONFIG_MAX)
+        total = USB_CONFIG_MAX;
+    if (total < 9 || !xhci_ok(get_desc(&u->xd, 0x0200, total)) ||
+        !usb_desc_config(u->xd.buf, total, &ci)) {
+        klog("usb: port %s %s device %04x:%04x, bad configuration descriptor", name, sp, di.vid, di.pid);
+        goto fail;
+    }
+    if (ci.has_kbd) {
+        if (!kbd_setup(u, &ci)) {
+            klog("usb: port %s %s keyboard %04x:%04x, setup failed", name, sp, di.vid, di.pid);
+            goto fail;
+        }
+        klog("usb: port %s %s keyboard %04x:%04x", name, sp, di.vid, di.pid);
+        return u;
+    }
+    klog("usb: port %s %s device %04x:%04x class %02x, ignored", name, sp, di.vid, di.pid, di.dev_class);
+fail:
+    dev_free(u);
+    return NULL;
+}
+
+// Brings a root port in line with what is plugged into it. Idempotent: called at
+// boot for every port and again for every Port Status Change event.
+static void service_root(struct usb_hc *h, uint8_t port, bool debounce) {
+    struct xhci *x = &h->x;
+    if (!port || port > x->max_ports)
+        return;
+    uint32_t sc = xhci_port_status(x, port);
+    bool conn = sc & XHCI_PORTSC_CCS, replugged = sc & XHCI_PORTSC_CSC;
+    struct usb_dev **slot = &h->port_dev[port];
+    uint64_t bit = 1ull << (port & 63), *skip = &h->skip[port >> 6];
+
+    if (*slot && (!conn || replugged)) {
+        klog("usb: port %s disconnected", (*slot)->name);
+        dev_remove(*slot);
+        *slot = NULL;
+    }
+    if (!conn || replugged)
+        *skip &= ~bit;
+    if (!conn || *slot || (*skip & bit))
+        return;
+    if (debounce)
+        mdelay(100);
+    uint8_t speed = 0;
+    if (!xhci_port_reset(x, port, &speed)) {
+        klog("usb: port %u: reset failed", port);
+        *skip |= bit;
+        return;
+    }
+    mdelay(10);  // reset recovery
+    struct xhci_dev_addr a = { .root_port = port, .speed = speed };
+    *slot = dev_attach(x, &a, NULL);
+    if (!*slot)
+        *skip |= bit;
+}
 
 void usb_init(const struct pci_list *pci) {
     for (size_t i = 0; i < pci->count; i++) {
@@ -25,5 +191,15 @@ void usb_init(const struct pci_list *pci) {
         if (xhci_init(&hcs[hc_count].x, pd))
             hc_count++;
     }
-    klog("usb: %zu xHCI controller%s", hc_count, hc_count == 1 ? "" : "s");
+    if (hc_count)
+        mdelay(100);  // let freshly powered ports see their devices
+    for (size_t i = 0; i < hc_count; i++)
+        for (unsigned p = 1; p <= hcs[i].x.max_ports; p++)
+            service_root(&hcs[i], (uint8_t)p, false);
+    klog("usb: %zu xHCI controller%s, %zu keyboard%s", hc_count, hc_count == 1 ? "" : "s",
+         kbd_count, kbd_count == 1 ? "" : "s");
+}
+
+size_t usb_keyboards(void) {
+    return kbd_count;
 }

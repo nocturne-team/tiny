@@ -421,3 +421,186 @@ bool xhci_port_take_change(struct xhci *x, uint8_t *port) {
     }
     return false;
 }
+
+uint32_t xhci_port_status(struct xhci *x, uint8_t port) {
+    uint32_t sc = rd(x->op, OP_PORTSC(port));
+    if (sc & XHCI_PORTSC_CHANGE)
+        wr(x->op, OP_PORTSC(port), xhci_portsc_ack(sc));
+    return sc;
+}
+
+bool xhci_port_reset(struct xhci *x, uint8_t port, uint8_t *speed) {
+    uint32_t off = OP_PORTSC(port);
+    if (x->port_major[port] != 3) {  // USB 2 ports need a reset; USB 3 ports train by themselves
+        wr(x->op, off, xhci_portsc_set(rd(x->op, off), XHCI_PORTSC_PR));
+        if (!wait_reg(x->op, off, XHCI_PORTSC_PRC, XHCI_PORTSC_PRC, 500))
+            return false;
+    }
+    if (!wait_reg(x->op, off, XHCI_PORTSC_PED, XHCI_PORTSC_PED, 500))
+        return false;
+    *speed = (uint8_t)XHCI_PORTSC_SPEED(xhci_port_status(x, port));
+    return true;
+}
+
+// Input context: [0] control, [1] slot, [1 + dci] endpoints. Output context: [0] slot, [dci].
+static volatile uint32_t *in_ctx(struct xhci_dev *d, unsigned i) {
+    return (volatile uint32_t *)(d->in_ctx + i * d->x->csz);
+}
+
+static volatile uint32_t *out_ctx(struct xhci_dev *d, unsigned i) {
+    return (volatile uint32_t *)(d->out_ctx + i * d->x->csz);
+}
+
+bool xhci_dev_open(struct xhci *x, struct xhci_dev *d, const struct xhci_dev_addr *a) {
+    memset(d, 0, sizeof *d);
+    d->x = x;
+    d->speed = a->speed;
+    d->root_port = a->root_port;
+    d->route = a->route;
+    uint8_t slot = 0;
+    if (command(x, 0, TRB_TYPE(TRB_ENABLE_SLOT), &slot) != XHCI_CC_SUCCESS)
+        return false;
+    if (!slot || slot > x->max_slots) {
+        klog("xhci: %s: bad slot id %u", x->name, slot);
+        return false;
+    }
+    d->slot = slot;
+    void *v;
+    if (!(d->out_phys = get_page(x, &v)))
+        goto fail;
+    d->out_ctx = v;
+    if (!(d->in_phys = get_page(x, &v)))
+        goto fail;
+    d->in_ctx = v;
+    if (!(d->buf_phys = get_page(x, &v)))
+        goto fail;
+    d->buf = v;
+    if (!ring_init(x, &d->ep0, true))
+        goto fail;
+    x->dcbaa[slot] = d->out_phys;
+    x->slots[slot] = d;
+
+    d->mps0 = xhci_default_mps0(a->speed);
+    volatile uint32_t *ctl = in_ctx(d, 0), *s = in_ctx(d, 1), *ep = in_ctx(d, 2);
+    ctl[1] = 0x3;  // add slot + EP0
+    s[0] = (a->route & 0xFFFFF) | (uint32_t)a->speed << 20 | 1u << 27;
+    s[1] = (uint32_t)a->root_port << 16;
+    s[2] = a->tt_slot | (uint32_t)a->tt_port << 8;
+    ep[1] = 3u << 1 | EP_TYPE_CONTROL << 3 | (uint32_t)d->mps0 << 16;
+    ep[2] = (uint32_t)d->ep0.phys | 1;
+    ep[3] = (uint32_t)(d->ep0.phys >> 32);
+    ep[4] = 8;
+    if (command(x, d->in_phys, TRB_TYPE(TRB_ADDRESS_DEVICE) | TRB_SLOT(slot), NULL) != XHCI_CC_SUCCESS)
+        goto fail;
+    mdelay(2);  // SetAddress recovery time
+
+    if (a->speed == USB_SPEED_FS) {  // FS EP0 may be 8, 16, 32 or 64 bytes
+        if (!xhci_ok(xhci_control(d, 0x80, 6, 0x0100, 0, 8)))
+            goto fail;
+        uint8_t mps = d->buf[7];
+        if (mps != d->mps0 && (mps == 16 || mps == 32 || mps == 64)) {
+            d->mps0 = mps;
+            ctl[0] = 0;
+            ctl[1] = 0x2;  // evaluate EP0 only
+            ep[1] = (ep[1] & 0xFFFF) | (uint32_t)mps << 16;
+            if (command(x, d->in_phys, TRB_TYPE(TRB_EVALUATE_CTX) | TRB_SLOT(slot), NULL) != XHCI_CC_SUCCESS)
+                goto fail;
+        }
+    }
+    return true;
+fail:
+    xhci_dev_close(d);
+    return false;
+}
+
+void xhci_dev_close(struct xhci_dev *d) {
+    struct xhci *x = d->x;
+    if (!x)
+        return;
+    if (d->slot) {
+        if (!x->dead)
+            command(x, 0, TRB_TYPE(TRB_DISABLE_SLOT) | TRB_SLOT(d->slot), NULL);
+        x->dcbaa[d->slot] = 0;
+        x->slots[d->slot] = NULL;
+    }
+    put_page(x, d->out_phys);
+    put_page(x, d->in_phys);
+    put_page(x, d->buf_phys);
+    put_page(x, d->ep0.phys);
+    put_page(x, d->intr.phys);
+    memset(d, 0, sizeof *d);
+}
+
+uint8_t xhci_control(struct xhci_dev *d, uint8_t reqtype, uint8_t req, uint16_t value,
+                     uint16_t index, uint16_t len) {
+    struct xhci *x = d->x;
+    if (x->dead || len > XHCI_CTRL_MAX)
+        return 0;
+    bool in = reqtype & 0x80;
+    uint64_t setup = reqtype | (uint64_t)req << 8 | (uint64_t)value << 16 |
+                     (uint64_t)index << 32 | (uint64_t)len << 48;
+    uint32_t trt = len ? (in ? 3u : 2u) : 0u;  // transfer type: none / OUT / IN data stage
+    if (in && len)
+        memset(d->buf, 0, len);
+    x->wait_done = false;
+    x->wait_n = 0;
+    x->wait_trb[x->wait_n++] = ring_push(&d->ep0, setup, 8, TRB_TYPE(TRB_SETUP) | TRB_IDT | trt << 16);
+    if (len)
+        x->wait_trb[x->wait_n++] = ring_push(&d->ep0, d->buf_phys, len,
+                                             TRB_TYPE(TRB_DATA) | (in ? TRB_DIR_IN : 0));
+    x->wait_trb[x->wait_n++] = ring_push(&d->ep0, 0, 0,
+                                         TRB_TYPE(TRB_STATUS) | TRB_IOC | (in && len ? 0 : TRB_DIR_IN));
+    doorbell(x, d->slot, 1);
+    uint8_t cc = wait_event(x, 1000);
+    if (cc && !xhci_ok(cc))
+        xhci_ep_reset(d, 1);  // stalled or failed: un-halt EP0 and skip the rest of the TD
+    return cc;
+}
+
+bool xhci_configure(struct xhci_dev *d, uint8_t ep_addr, uint16_t mps, uint8_t binterval,
+                    const struct xhci_hub_info *hub) {
+    struct xhci *x = d->x;
+    uint8_t dci = xhci_ep_dci(ep_addr);
+    if (!ring_init(x, &d->intr, true))
+        return false;
+    memset((void *)(uintptr_t)d->in_ctx, 0, 4096);
+    volatile uint32_t *ctl = in_ctx(d, 0), *s = in_ctx(d, 1), *ep = in_ctx(d, 1 + dci);
+    volatile uint32_t *cur = out_ctx(d, 0);
+    ctl[1] = 1u | 1u << dci;
+    for (int i = 0; i < 4; i++)
+        s[i] = cur[i];
+    s[0] = (s[0] & ~(0x1Fu << 27)) | (uint32_t)dci << 27;  // context entries
+    s[3] = 0;
+    if (hub) {
+        s[0] |= 1u << 26;
+        s[1] = (s[1] & 0x00FFFFFF) | (uint32_t)hub->ports << 24;
+        s[2] = (s[2] & ~(3u << 16)) | (uint32_t)hub->ttt << 16;
+    }
+    ep[0] = (uint32_t)xhci_ep_interval(d->speed, binterval) << 16;
+    ep[1] = 3u << 1 | EP_TYPE_INTR_IN << 3 | (uint32_t)mps << 16;
+    ep[2] = (uint32_t)d->intr.phys | 1;
+    ep[3] = (uint32_t)(d->intr.phys >> 32);
+    ep[4] = 8 | (uint32_t)mps << 16;  // average TRB length, max ESIT payload
+    if (command(x, d->in_phys, TRB_TYPE(TRB_CONFIGURE_EP) | TRB_SLOT(d->slot), NULL) != XHCI_CC_SUCCESS) {
+        put_page(x, d->intr.phys);
+        memset(&d->intr, 0, sizeof d->intr);
+        return false;
+    }
+    d->intr_dci = dci;
+    d->intr_len = mps > XHCI_REPORT_MAX ? XHCI_REPORT_MAX : mps;
+    return true;
+}
+
+void xhci_intr_queue(struct xhci_dev *d) {
+    d->intr_done = false;
+    ring_push(&d->intr, d->buf_phys + XHCI_REPORT_OFF, d->intr_len,
+              TRB_TYPE(TRB_NORMAL) | TRB_IOC | TRB_ISP);
+    doorbell(d->x, d->slot, d->intr_dci);
+}
+
+void xhci_ep_reset(struct xhci_dev *d, uint8_t dci) {
+    struct xhci_ring *r = dci == 1 ? &d->ep0 : &d->intr;
+    command(d->x, 0, TRB_TYPE(TRB_RESET_EP) | TRB_EP(dci) | TRB_SLOT(d->slot), NULL);
+    command(d->x, (r->phys + (uint64_t)r->idx * sizeof(struct xhci_trb)) | r->cycle,
+            TRB_TYPE(TRB_SET_TR_DEQ) | TRB_EP(dci) | TRB_SLOT(d->slot), NULL);
+}
