@@ -13,3 +13,6 @@ size_t usb_keyboards(void);
 // Services every controller (reports, key repeat); returns true and fills *out
 // for each key press, one per call.
 bool usb_poll(struct key_event *out);
+
+// Next queued mouse event (filled while usb_poll services the controllers).
+bool usb_poll_pointer(struct pointer_event *out);

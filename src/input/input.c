@@ -24,3 +24,7 @@ bool input_keyboard_changed(void) {
     last_have = have;
     return true;
 }
+
+bool input_poll_pointer(struct pointer_event *out) {
+    return usb_poll_pointer(out);
+}

@@ -3,6 +3,7 @@
 #include "lib/serial.h"
 #include "lib/string.h"
 #include "usb/hid_kbd.h"
+#include "usb/hid_mouse.h"
 #include "usb/usb_desc.h"
 #include "usb/xhci.h"
 #include "usb/xhci_calc.h"
@@ -107,6 +108,8 @@ static bool hid_setup(struct usb_dev *u, const struct usb_config_info *ci) {
         u->is_kbd = true;
         kbd_count++;
     }
+    if (ci->has_mouse && hid_iface_setup(u, ci->mouse_iface, &ci->mouse_ep, &u->mouse_ep))
+        u->is_mouse = true;
     if (!u->is_kbd && !u->is_mouse)
         return false;
     u->kind = DEV_HID;
@@ -271,7 +274,7 @@ static struct usb_dev *dev_attach(struct xhci *x, const struct xhci_dev_addr *a,
         }
         return u;
     }
-    if (ci.has_kbd) {
+    if (ci.has_kbd || ci.has_mouse) {
         if (!hid_setup(u, &ci)) {
             klog("usb: port %s %s HID %04x:%04x, setup failed", name, sp, di.vid, di.pid);
             goto fail;
@@ -369,6 +372,43 @@ static bool pop(struct key_event *out) {
     return true;
 }
 
+#define PTRQ 8
+
+static struct pointer_event pq[PTRQ];
+static size_t pq_head, pq_len;
+
+static int16_t clamp16(int v) {
+    return (int16_t)(v < -32768 ? -32768 : v > 32767 ? 32767 : v);
+}
+
+// Queues a pointer event, merging its motion into the last one when the buttons
+// did not change, so clicks are never lost while motion is coalesced.
+static void push_pointer(const struct pointer_event *p) {
+    if (pq_len) {
+        struct pointer_event *last = &pq[(pq_head + pq_len - 1) % PTRQ];
+        if (last->buttons == p->buttons) {
+            int w = last->wheel + p->wheel;
+            last->dx = clamp16(last->dx + p->dx);
+            last->dy = clamp16(last->dy + p->dy);
+            last->wheel = (int8_t)(w < -127 ? -127 : w > 127 ? 127 : w);
+            return;
+        }
+    }
+    if (pq_len < PTRQ) {
+        pq[(pq_head + pq_len) % PTRQ] = *p;
+        pq_len++;
+    }
+}
+
+bool usb_poll_pointer(struct pointer_event *out) {
+    if (!pq_len)
+        return false;
+    *out = pq[pq_head];
+    pq_head = (pq_head + 1) % PTRQ;
+    pq_len--;
+    return true;
+}
+
 static void handle_report(struct usb_dev *u, int i) {
     struct xhci_dev *d = &u->xd;
     struct xhci_intr *e = &d->intr[i];
@@ -404,6 +444,11 @@ static void handle_report(struct usb_dev *u, int i) {
         size_t n = hid_kbd_report(&u->kbd, r, e->actual, tsc_ms(), ev);
         for (size_t k = 0; k < n; k++)
             push(&ev[k]);
+        xhci_intr_queue(d, i);
+    } else if (u->is_mouse && i == u->mouse_ep) {
+        struct pointer_event p;
+        if (hid_mouse_report(r, e->actual, &p))
+            push_pointer(&p);
         xhci_intr_queue(d, i);
     } else {
         xhci_intr_queue(d, i);

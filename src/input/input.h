@@ -28,3 +28,5 @@ bool input_poll(struct key_event *out);
 bool input_have_keyboard(void);
 // True once each time input_have_keyboard() flips.
 bool input_keyboard_changed(void);
+// Non-blocking: true and fills *out for each queued pointer event. Call after input_poll.
+bool input_poll_pointer(struct pointer_event *out);
