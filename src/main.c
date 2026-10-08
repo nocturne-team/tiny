@@ -2,6 +2,7 @@
 #include "arch/x86.h"
 #include "boot.h"
 #include "gfx/gfx.h"
+#include "info/cpu.h"
 #include "info/rtc.h"
 #include "input/input.h"
 #include "lib/serial.h"
@@ -15,12 +16,15 @@ static void demo_screen(void) {
     gfx_flush();
 }
 
+static struct cpu_info cpu;
+
 void kmain(void) {
     serial_init();
     klog("tiny: booting");
     if (!boot_init())
         cpu_halt_forever();
     idt_init();
+    tsc_init();
     klog("tiny: %s %s, firmware type %d", bootinfo.bl_name ? bootinfo.bl_name : "?",
          bootinfo.bl_version ? bootinfo.bl_version : "?", bootinfo.firmware);
 
@@ -43,6 +47,10 @@ void kmain(void) {
         klog("rtc: not responding");
 
     bool keyboard = input_init();
+    cpu_probe(&cpu);
+    klog("cpu: %s | %s | family %u model %u stepping %u | %lu logical | %zu features, %zu caches",
+         cpu.vendor, cpu.brand, cpu.sig.family, cpu.sig.model, cpu.sig.stepping,
+         (unsigned long)cpu.cpu_count, cpu.feature_count, cpu.cache_count);
     demo_screen();
     klog("PROBE OK");
     klog("UI READY");
