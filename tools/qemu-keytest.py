@@ -24,6 +24,7 @@ import sys
 import tempfile
 import time
 
+sys.dont_write_bytecode = True  # importing qemu-shot.py must not leave tools/__pycache__
 HERE = os.path.dirname(os.path.abspath(__file__))
 _spec = importlib.util.spec_from_file_location('qemu_shot', os.path.join(HERE, 'qemu-shot.py'))
 shot = importlib.util.module_from_spec(_spec)
