@@ -62,7 +62,7 @@ void kmain(void) {
 
     size_t width = (size_t)gfx_cols() - 4;
     tab_cpu_build(&pages[0], &cpu, width);
-    tab_mem_build(&pages[1], bootinfo.memmap);
+    tab_mem_build(&pages[1], bootinfo.memmap, &fw.smbios);
     tab_pci_build(&pages[2], &pci);
     tab_fw_build(&pages[3], &fw);
     tab_about_build(&pages[4]);

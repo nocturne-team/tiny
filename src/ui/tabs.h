@@ -6,10 +6,12 @@
 struct cpu_info;
 struct fw_info;
 struct pci_list;
+struct smbios_info;
 
 // `width` is the usable content width in columns (used to wrap feature flags).
 void tab_cpu_build(struct page *p, const struct cpu_info *c, size_t width);
-void tab_mem_build(struct page *p, const struct limine_memmap_response *map);
+// `smb` may be NULL; its type 17 entries become the "Installed modules" section.
+void tab_mem_build(struct page *p, const struct limine_memmap_response *map, const struct smbios_info *smb);
 void tab_pci_build(struct page *p, const struct pci_list *l);
 void tab_fw_build(struct page *p, const struct fw_info *f);
 void tab_about_build(struct page *p);

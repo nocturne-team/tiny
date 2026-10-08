@@ -55,14 +55,41 @@ static void test_mem(void) {
     struct limine_memmap_entry *ptrs[2] = { &e[0], &e[1] };
     struct limine_memmap_response map = { .revision = 0, .entry_count = 2, .entries = ptrs };
 
-    tab_mem_build(&p, &map);
+    tab_mem_build(&p, &map, NULL);
     CHECK_STR(p.title, "Memory");
     CHECK_STR(find_line(&p, "Available") + 16, "511.6 MiB");
     CHECK_STR(find_line(&p, "0000000000000000"),
               "0000000000000000  000000000009fbff   639.0 KiB  usable");
 
-    tab_mem_build(&p, NULL);
+    tab_mem_build(&p, NULL, NULL);
     CHECK_STR(p.lines[0].text, "Memory map not provided by bootloader");
+}
+
+static void test_mem_dimms(void) {
+    struct limine_memmap_entry e = { 0x100000, 0x1ff00000, LIMINE_MEMMAP_USABLE };
+    struct limine_memmap_entry *ptrs[1] = { &e };
+    struct limine_memmap_response map = { .revision = 0, .entry_count = 1, .entries = ptrs };
+    static struct smbios_info smb;
+    memset(&smb, 0, sizeof smb);
+    smb.present = true;
+    smb.dimm_count = 2;
+    strcpy(smb.dimms[0].locator, "DIMM_A1");
+    smb.dimms[0].size = 8ULL << 30;
+    smb.dimms[0].type = 0x1A;
+    smb.dimms[0].speed_mts = 3200;
+    strcpy(smb.dimms[0].manufacturer, "Kingston");
+    strcpy(smb.dimms[0].part, "KF432C16BB/8");
+    strcpy(smb.dimms[1].locator, "DIMM_A2");
+
+    tab_mem_build(&p, &map, &smb);
+    CHECK_STR(find_line(&p, "Installed"), "Installed modules (1 of 2 slots)");
+    CHECK_STR(find_line(&p, "Total installed") + 16, "8.0 GiB");
+    CHECK_STR(find_line(&p, "DIMM_A1"), "DIMM_A1           8.0 GiB  DDR4    3200 MT/s  Kingston KF432C16BB/8");
+    CHECK_STR(find_line(&p, "DIMM_A2"), "DIMM_A2             empty");
+
+    smb.dimm_count = 0;  // SMBIOS without type 17: no section at all
+    tab_mem_build(&p, &map, &smb);
+    CHECK_STR(find_line(&p, "Installed"), "");
 }
 
 static void test_mem_huge(void) {  // Review Focus #3
@@ -73,7 +100,7 @@ static void test_mem_huge(void) {  // Review Focus #3
         ptrs[i] = &e[i];
     }
     struct limine_memmap_response map = { .revision = 0, .entry_count = 400, .entries = ptrs };
-    tab_mem_build(&p, &map);
+    tab_mem_build(&p, &map, NULL);
     CHECK_EQ(p.count, PAGE_MAX_LINES);
     CHECK(p.truncated);
     CHECK(strncmp(p.lines[PAGE_MAX_LINES - 1].text, "...", 3) == 0);
@@ -140,6 +167,7 @@ int main(void) {
     test_pci();
     test_cpu();
     test_mem();
+    test_mem_dimms();
     test_mem_huge();
     test_fw();
     TEST_MAIN_END();

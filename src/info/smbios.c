@@ -48,8 +48,62 @@ static void get_str(const struct smb_struct *s, uint8_t field, char *dst, size_t
     }
 }
 
+static void add_dimm(const struct smb_struct *s, struct smbios_info *out) {
+    if (out->dimm_count == SMBIOS_MAX_DIMMS) {
+        out->dimms_truncated = true;
+        return;
+    }
+    struct smbios_dimm *d = &out->dimms[out->dimm_count++];
+    get_str(s, 0x10, d->locator, sizeof d->locator);
+    get_str(s, 0x17, d->manufacturer, sizeof d->manufacturer);
+    get_str(s, 0x1A, d->part, sizeof d->part);
+    d->type = s->flen > 0x12 ? s->hdr[0x12] : 0x02;
+
+    uint16_t size = s->flen >= 0x0E ? rd16(s->hdr + 0x0C) : 0xFFFF;
+    if (size == 0xFFFF)
+        d->size_unknown = true;
+    else if (size == 0x7FFF && s->flen >= 0x20)
+        d->size = (uint64_t)(rd32(s->hdr + 0x1C) & 0x7FFFFFFF) << 20;  // extended size, MB
+    else if (size & 0x8000)
+        d->size = (uint64_t)(size & 0x7FFF) << 10;  // KB granularity
+    else
+        d->size = (uint64_t)size << 20;
+
+    uint16_t speed = s->flen >= 0x17 ? rd16(s->hdr + 0x15) : 0;
+    if (speed == 0xFFFF)
+        d->speed_mts = s->flen >= 0x58 ? rd32(s->hdr + 0x54) : 0;
+    else
+        d->speed_mts = speed;
+}
+
+const char *smbios_memory_type_name(uint8_t type) {
+    switch (type) {
+    case 0x03: return "DRAM";
+    case 0x07: return "RAM";
+    case 0x0F: return "SDRAM";
+    case 0x12: return "DDR";
+    case 0x13: return "DDR2";
+    case 0x18: return "DDR3";
+    case 0x1A: return "DDR4";
+    case 0x1B: return "LPDDR";
+    case 0x1C: return "LPDDR2";
+    case 0x1D: return "LPDDR3";
+    case 0x1E: return "LPDDR4";
+    case 0x20: return "HBM";
+    case 0x21: return "HBM2";
+    case 0x22: return "DDR5";
+    case 0x23: return "LPDDR5";
+    case 0x24: return "HBM3";
+    default: return "unknown";
+    }
+}
+
 static void handle(const struct smb_struct *s, struct smbios_info *out, unsigned *seen) {
     uint8_t type = s->hdr[0];
+    if (type == 17) {
+        add_dimm(s, out);
+        return;
+    }
     if (type > 2 || (*seen & (1u << type)))
         return;
     *seen |= 1u << type;

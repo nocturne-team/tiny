@@ -102,7 +102,7 @@ TESTS += test_smbios
 deps_test_smbios := src/info/smbios.c src/lib/fmt.c
 TESTS += test_page test_tabs
 deps_test_page := src/ui/page.c src/lib/fmt.c
-deps_test_tabs := src/ui/tab_about.c src/ui/tab_pci.c src/info/pci.c src/ui/tab_cpu.c src/ui/tab_mem.c src/ui/tab_fw.c src/ui/page.c src/info/mem.c src/lib/fmt.c
+deps_test_tabs := src/info/smbios.c src/ui/tab_about.c src/ui/tab_pci.c src/info/pci.c src/ui/tab_cpu.c src/ui/tab_mem.c src/ui/tab_fw.c src/ui/page.c src/info/mem.c src/lib/fmt.c
 TESTS += test_pci
 deps_test_pci := src/info/pci.c
 TESTS += test_braille
@@ -128,6 +128,7 @@ SMOKE_EXPECT += "MiB available"
 SMOKE_EXPECT += "acpi: rev" "smbios: QEMU"
 SMOKE_EXPECT += "power: PM1a_CNT"
 SMOKE_EXPECT += "pci: "
+SMOKE_EXPECT += "memory devices"
 # (add "SMOKE_EXPECT += \"pattern\"" lines above this comment)
 
 smoke:

@@ -50,4 +50,5 @@ void fw_probe(struct fw_info *f) {
              f->smbios.major, f->smbios.minor);
     else
         klog("smbios: not provided");
+    klog("smbios: %zu memory devices", f->smbios.dimm_count);
 }

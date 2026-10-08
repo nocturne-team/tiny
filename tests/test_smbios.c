@@ -200,7 +200,91 @@ static void test_truncated_table(void) {
     free(heap);
 }
 
+static uint8_t *dimm(uint8_t flen, uint16_t size, uint8_t type, uint16_t speed,
+                     const char *locator, const char *maker, const char *part) {
+    uint8_t *d = begin_struct(17, flen);
+    put16(d + 0x0C, size);
+    d[0x10] = 1;  // locator -> string 1
+    d[0x12] = type;
+    if (flen >= 0x17)
+        put16(d + 0x15, speed);
+    if (flen >= 0x1B) {
+        d[0x17] = maker ? 2 : 0;
+        d[0x1A] = part ? 3 : 0;
+    }
+    const char *strs[3] = { locator, maker ? maker : "", part ? part : "" };
+    strings(strs, maker || part ? 3 : 1);
+    return d;
+}
+
+static void parse_table(void) {
+    uint8_t *e = build_ep32(0, PHYS_BASE + TABLE_OFF, (uint16_t)tlen);
+    smbios_parse(e, NULL, hhdm(), &s);
+}
+
+static void start_table(void) {
+    memset(arena, 0, sizeof arena);
+    tab = arena + TABLE_OFF;
+    tlen = 0;
+}
+
+static void test_dimms(void) {
+    start_table();
+    dimm(0x28, 8192, 0x1A, 3200, "DIMM_A1", "Kingston", "KF432C16BB/8");  // 8 GiB DDR4
+    dimm(0x28, 0, 0x02, 0, "DIMM_A2", NULL, NULL);                          // empty slot
+    uint8_t *big = dimm(0x5C, 0x7FFF, 0x22, 0xFFFF, "DIMM_B1", "Samsung", "M321R8GA0BB0");
+    put32(big + 0x1C, 0x10000);  // extended size: 64 GiB in MB
+    put32(big + 0x54, 6000);     // extended speed
+    dimm(0x15, 0x8000 | 512, 0x07, 0, "SIMM0", NULL, NULL);                 // 512 KB, SMBIOS 2.1 layout
+    begin_struct(127, 4);
+    strings(NULL, 0);
+    parse_table();
+
+    CHECK_EQ(s.dimm_count, 4);
+    CHECK(!s.dimms_truncated);
+    CHECK_STR(s.dimms[0].locator, "DIMM_A1");
+    CHECK_EQ(s.dimms[0].size, 8192ULL << 20);
+    CHECK_EQ(s.dimms[0].type, 0x1A);
+    CHECK_EQ(s.dimms[0].speed_mts, 3200);
+    CHECK_STR(s.dimms[0].manufacturer, "Kingston");
+    CHECK_STR(s.dimms[0].part, "KF432C16BB/8");
+    CHECK_EQ(s.dimms[1].size, 0);
+    CHECK(!s.dimms[1].size_unknown);
+    CHECK_STR(s.dimms[1].manufacturer, "");
+    CHECK_EQ(s.dimms[2].size, 64ULL << 30);
+    CHECK_EQ(s.dimms[2].speed_mts, 6000);
+    CHECK_EQ(s.dimms[3].size, 512ULL << 10);
+    CHECK_EQ(s.dimms[3].speed_mts, 0);
+    CHECK_STR(s.dimms[3].locator, "SIMM0");
+}
+
+static void test_dimm_unknown_and_truncated(void) {
+    start_table();
+    dimm(0x28, 0xFFFF, 0x02, 0, "X", NULL, NULL);
+    for (int i = 0; i < 20; i++)
+        dimm(0x28, 1024, 0x18, 1600, "D", NULL, NULL);
+    begin_struct(127, 4);
+    strings(NULL, 0);
+    parse_table();
+    CHECK(s.dimms[0].size_unknown);
+    CHECK_EQ(s.dimm_count, SMBIOS_MAX_DIMMS);
+    CHECK(s.dimms_truncated);
+}
+
+static void test_memory_type_names(void) {
+    CHECK_STR(smbios_memory_type_name(0x1A), "DDR4");
+    CHECK_STR(smbios_memory_type_name(0x22), "DDR5");
+    CHECK_STR(smbios_memory_type_name(0x23), "LPDDR5");
+    CHECK_STR(smbios_memory_type_name(0x18), "DDR3");
+    CHECK_STR(smbios_memory_type_name(0x07), "RAM");
+    CHECK_STR(smbios_memory_type_name(0x02), "unknown");
+    CHECK_STR(smbios_memory_type_name(0x99), "unknown");
+}
+
 int main(void) {
+    test_dimms();
+    test_dimm_unknown_and_truncated();
+    test_memory_type_names();
     test_ep32();
     test_ep64_preferred();
     test_bad_checksum();

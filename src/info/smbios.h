@@ -1,6 +1,20 @@
 #pragma once
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
+
+#define SMBIOS_MAX_DIMMS 16
+
+// One SMBIOS type 17 "memory device" (a slot, populated or not).
+struct smbios_dimm {
+    char locator[32];
+    uint64_t size;      // bytes; 0 = empty slot
+    bool size_unknown;
+    uint8_t type;       // SMBIOS memory type, see smbios_memory_type_name
+    uint32_t speed_mts; // 0 = unknown
+    char manufacturer[32];
+    char part[32];
+};
 
 struct smbios_info {
     bool present;
@@ -10,8 +24,12 @@ struct smbios_info {
     char bios_vendor[48], bios_version[48], bios_date[16];    // type 0
     char sys_vendor[48], sys_product[48], sys_version[48];    // type 1
     char board_vendor[48], board_product[48];                 // type 2
+    size_t dimm_count;                                        // type 17
+    bool dimms_truncated;
+    struct smbios_dimm dimms[SMBIOS_MAX_DIMMS];
 };
 
 // entry32/entry64 are virtual pointers to the entry points (either may be NULL).
 // The structure table address inside is physical and converted with `hhdm`.
+const char *smbios_memory_type_name(uint8_t type);
 void smbios_parse(const void *entry32, const void *entry64, uint64_t hhdm, struct smbios_info *out);
