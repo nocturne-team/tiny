@@ -107,6 +107,8 @@ smoke:
 	$(MAKE) --no-print-directory BUILD=build/smoke KDEFS=-DSMOKE iso
 	tests/smoke.sh build/smoke/tiny.iso bios ok q35 $(SMOKE_EXPECT)
 	tests/smoke.sh build/smoke/tiny.iso uefi ok q35 $(SMOKE_EXPECT)
+	$(MAKE) --no-print-directory BUILD=build/smoke-panic KDEFS="-DSMOKE -DSMOKE_PANIC" iso
+	tests/smoke.sh build/smoke-panic/tiny.iso bios panic
 
 clean:
 	rm -rf build

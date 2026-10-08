@@ -1,3 +1,4 @@
+#include "arch/idt.h"
 #include "arch/x86.h"
 #include "boot.h"
 #include "gfx/gfx.h"
@@ -18,6 +19,7 @@ void kmain(void) {
     klog("tiny: booting");
     if (!boot_init())
         cpu_halt_forever();
+    idt_init();
     klog("tiny: %s %s, firmware type %d", bootinfo.bl_name ? bootinfo.bl_name : "?",
          bootinfo.bl_version ? bootinfo.bl_version : "?", bootinfo.firmware);
 
@@ -28,6 +30,9 @@ void kmain(void) {
     const struct gfx_layout *l = gfx_get_layout();
     klog("gfx: %lux%lu -> %dx%d cells, scale %d", (unsigned long)bootinfo.fb->width,
          (unsigned long)bootinfo.fb->height, l->cols, l->rows, l->scale);
+#ifdef SMOKE_PANIC
+    __asm__ volatile("ud2");
+#endif
 
     struct datetime now;
     if (rtc_read(&now, NULL))
