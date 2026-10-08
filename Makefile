@@ -174,6 +174,12 @@ smoke:
 	$(KEYTEST) -- add:usb-kbd,bus=xhci.0,id=k1 'wait:keyboard 0627:' 'wait:ui: keyboard found' \
 		del:k1 'wait:disconnected' 'wait:ui: keyboard missing' \
 		add:usb-kbd,bus=xhci.0,id=k2 'wait:keyboard 0627:' 'wait:ui: keyboard found' key:f3 'wait:ui: tab 3'
+	$(KEYTEST) -device usb-hub,bus=xhci.0,port=1 -device usb-kbd,bus=xhci.0,port=1.1 -- \
+		'wait:hub, 8 ports' 'wait:port \d+\.1 \w+ keyboard 0627:' key:f3 'wait:ui: tab 3'
+	$(KEYTEST) -device usb-hub,bus=xhci.0,port=1 -- 'wait:hub, 8 ports' \
+		add:usb-kbd,bus=xhci.0,port=1.2,id=k1 'wait:port \d+\.2 \w+ keyboard' \
+		del:k1 'wait:port \d+\.2 disconnected' \
+		add:usb-kbd,bus=xhci.0,port=1.2,id=k2 'wait:port \d+\.2 \w+ keyboard' key:f3 'wait:ui: tab 3'
 
 clean:
 	rm -rf build

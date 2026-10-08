@@ -77,6 +77,8 @@ static void dev_remove(struct usb_dev *u) {
     dev_free(u);
 }
 
+static struct usb_dev *dev_attach(struct xhci *x, const struct xhci_dev_addr *a, struct usb_dev *parent);
+
 static uint8_t get_desc(struct xhci_dev *d, uint16_t type_index, uint16_t len) {
     return xhci_control(d, 0x80, REQ_GET_DESCRIPTOR, type_index, 0, len);
 }
@@ -92,6 +94,104 @@ static bool kbd_setup(struct usb_dev *u, const struct usb_config_info *ci) {
         return false;
     u->kind = DEV_KBD;
     kbd_count++;
+    xhci_intr_queue(d);
+    return true;
+}
+
+// Hub class features (USB 2.0 11.24.2).
+#define HUB_PORT_RESET 4
+#define HUB_PORT_POWER 8
+#define HUB_C_PORT_CONNECTION 16
+#define HUB_C_PORT_RESET 20
+#define HUB_ST_CONNECTION (1u << 0)
+#define HUB_ST_ENABLE (1u << 1)
+#define HUB_ST_LOW_SPEED (1u << 9)
+#define HUB_ST_HIGH_SPEED (1u << 10)
+#define HUB_CH_CONNECTION (1u << 0)
+#define HUB_CH_RESET (1u << 4)
+
+static bool hub_port_status(struct xhci_dev *d, uint8_t port, uint16_t *status, uint16_t *change) {
+    if (!xhci_ok(xhci_control(d, 0xA3, REQ_GET_STATUS, 0, port, 4)))
+        return false;
+    *status = (uint16_t)(d->buf[0] | d->buf[1] << 8);
+    *change = (uint16_t)(d->buf[2] | d->buf[3] << 8);
+    return true;
+}
+
+// Same idea as service_root, for port `port` of hub `h`.
+static void service_hub_port(struct usb_dev *h, uint8_t port, bool debounce) {
+    struct xhci_dev *d = &h->xd;
+    uint16_t status, change;
+    if (!port || port > h->nports || !hub_port_status(d, port, &status, &change))
+        return;
+    for (unsigned b = 0; b < 5; b++)  // acknowledge C_PORT_CONNECTION .. C_PORT_RESET
+        if (change & (1u << b))
+            xhci_control(d, 0x23, REQ_CLEAR_FEATURE, (uint16_t)(HUB_C_PORT_CONNECTION + b), port, 0);
+    bool conn = status & HUB_ST_CONNECTION, replugged = change & HUB_CH_CONNECTION;
+    struct usb_dev **c = &h->child[port];
+    uint16_t bit = (uint16_t)(1u << port);
+
+    if (*c && (!conn || replugged)) {
+        klog("usb: port %s disconnected", (*c)->name);
+        dev_remove(*c);
+        *c = NULL;
+    }
+    if (!conn || replugged)
+        h->skip &= (uint16_t)~bit;
+    if (!conn || *c || (h->skip & bit))
+        return;
+    if (debounce)
+        mdelay(100);
+    xhci_control(d, 0x23, REQ_SET_FEATURE, HUB_PORT_RESET, port, 0);
+    bool reset_done = false;
+    for (int i = 0; i < 50 && !reset_done; i++) {
+        mdelay(10);
+        reset_done = hub_port_status(d, port, &status, &change) && (change & HUB_CH_RESET);
+    }
+    char name[16];
+    usb_port_name(name, sizeof name, d->root_port, usb_route_append(d->route, 0, port));
+    if (!reset_done || !(status & HUB_ST_ENABLE)) {
+        klog("usb: port %s: reset failed", name);
+        h->skip |= bit;
+        return;
+    }
+    xhci_control(d, 0x23, REQ_CLEAR_FEATURE, HUB_C_PORT_RESET, port, 0);
+    mdelay(10);  // reset recovery
+    uint8_t speed = (status & HUB_ST_LOW_SPEED) ? USB_SPEED_LS
+                  : (status & HUB_ST_HIGH_SPEED) ? USB_SPEED_HS : USB_SPEED_FS;
+    struct xhci_dev_addr a = {
+        .root_port = d->root_port,
+        .speed = speed,
+        .route = usb_route_append(d->route, 0, port),
+    };
+    if (d->speed == USB_SPEED_HS && speed != USB_SPEED_HS) {  // LS/FS behind a HS hub: its TT
+        a.tt_slot = d->slot;
+        a.tt_port = port;
+    }
+    *c = dev_attach(d->x, &a, h);
+    if (!*c)
+        h->skip |= bit;
+}
+
+static bool hub_setup(struct usb_dev *u, const struct usb_config_info *ci) {
+    struct xhci_dev *d = &u->xd;
+    struct usb_hub_desc hd;
+    if (!ci->has_hub || !xhci_ok(xhci_control(d, 0x00, REQ_SET_CONFIGURATION, ci->value, 0, 0)))
+        return false;
+    if (!xhci_ok(xhci_control(d, 0xA0, REQ_GET_DESCRIPTOR, 0x2900, 0, 16)) ||
+        !usb_desc_hub(d->buf, 16, &hd))
+        return false;
+    struct xhci_hub_info hi = { .ports = hd.ports, .ttt = d->speed == USB_SPEED_HS ? hd.ttt : 0 };
+    if (!xhci_configure(d, ci->hub_ep.addr, ci->hub_ep.mps, ci->hub_ep.interval, &hi))
+        return false;
+    u->kind = DEV_HUB;
+    u->nports = hd.ports;
+    klog("usb: port %s %s hub, %u ports", u->name, usb_speed_name(d->speed), hd.ports);
+    for (uint8_t p = 1; p <= hd.ports; p++)
+        xhci_control(d, 0x23, REQ_SET_FEATURE, HUB_PORT_POWER, p, 0);
+    mdelay(hd.pwr_good_ms > 100 ? hd.pwr_good_ms : 100);
+    for (uint8_t p = 1; p <= hd.ports; p++)
+        service_hub_port(u, p, false);
     xhci_intr_queue(d);
     return true;
 }
@@ -128,6 +228,21 @@ static struct usb_dev *dev_attach(struct xhci *x, const struct xhci_dev_addr *a,
         !usb_desc_config(u->xd.buf, total, &ci)) {
         klog("usb: port %s %s device %04x:%04x, bad configuration descriptor", name, sp, di.vid, di.pid);
         goto fail;
+    }
+    if (di.dev_class == 9) {
+        if (parent) {
+            klog("usb: port %s %s hub behind a hub, ignored", name, sp);
+            goto fail;
+        }
+        if (a->speed >= USB_SPEED_SS) {  // its USB 2 twin on a USB 2 port carries the keyboards
+            klog("usb: port %s %s hub, ignored", name, sp);
+            goto fail;
+        }
+        if (!hub_setup(u, &ci)) {
+            klog("usb: port %s %s hub %04x:%04x, setup failed", name, sp, di.vid, di.pid);
+            goto fail;
+        }
+        return u;
     }
     if (ci.has_kbd) {
         if (!kbd_setup(u, &ci)) {
@@ -246,6 +361,13 @@ static void handle_report(struct usb_dev *u) {
         for (size_t i = 0; i < n; i++)
             push(&ev[i]);
         xhci_intr_queue(d);
+    } else if (u->kind == DEV_HUB) {
+        // Bitmap: bit 0 = hub itself, bit p = port p changed.
+        uint32_t bits = r[0] | (d->intr_actual > 1 ? (uint32_t)r[1] << 8 : 0);
+        xhci_intr_queue(d);  // bits copied out: the buffer may be refilled
+        for (uint8_t p = 1; p <= u->nports; p++)
+            if (bits & (1u << p))
+                service_hub_port(u, p, true);
     }
 }
 
