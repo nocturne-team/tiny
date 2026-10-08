@@ -85,6 +85,8 @@ TESTS += test_time
 deps_test_time := src/lib/time.c src/lib/fmt.c
 TESTS += test_layout
 deps_test_layout := src/gfx/layout.c
+TESTS += test_ps2
+deps_test_ps2 := src/input/ps2_decode.c
 # (add "TESTS += test_x" and "deps_test_x := ..." lines above this comment)
 
 define TEST_RULE
@@ -101,6 +103,7 @@ test: $(TESTS:%=$(BUILD)/tests/%)
 # --- QEMU smoke tests ---------------------------------------------------------
 SMOKE_EXPECT :=
 SMOKE_EXPECT += "rtc: 20"
+SMOKE_EXPECT += "ps2: keyboard controller ok"
 # (add "SMOKE_EXPECT += \"pattern\"" lines above this comment)
 
 smoke:
@@ -109,6 +112,7 @@ smoke:
 	tests/smoke.sh build/smoke/tiny.iso uefi ok q35 $(SMOKE_EXPECT)
 	$(MAKE) --no-print-directory BUILD=build/smoke-panic KDEFS="-DSMOKE -DSMOKE_PANIC" iso
 	tests/smoke.sh build/smoke-panic/tiny.iso bios panic
+	tests/smoke.sh build/smoke/tiny.iso bios ok q35,i8042=off "ps2: no controller"
 
 clean:
 	rm -rf build

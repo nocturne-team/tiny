@@ -3,6 +3,7 @@
 #include "boot.h"
 #include "gfx/gfx.h"
 #include "info/rtc.h"
+#include "input/input.h"
 #include "lib/serial.h"
 
 static void demo_screen(void) {
@@ -41,11 +42,17 @@ void kmain(void) {
     else
         klog("rtc: not responding");
 
+    bool keyboard = input_init();
     demo_screen();
     klog("PROBE OK");
     klog("UI READY");
 #ifdef SMOKE
     qemu_debug_exit(0x10);
 #endif
-    cpu_halt_forever();
+    for (;;) {
+        struct key_event k;
+        if (keyboard && input_poll(&k))
+            klog("key: %d '%c'", k.key, k.ch ? k.ch : ' ');
+        cpu_pause();
+    }
 }
