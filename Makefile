@@ -114,6 +114,7 @@ SMOKE_EXPECT += "rtc: 20"
 SMOKE_EXPECT += "ps2: keyboard controller ok"
 SMOKE_EXPECT += "tsc: " "cpu: "
 SMOKE_EXPECT += "MiB available"
+SMOKE_EXPECT += "acpi: rev" "smbios: QEMU"
 # (add "SMOKE_EXPECT += \"pattern\"" lines above this comment)
 
 smoke:
@@ -123,6 +124,9 @@ smoke:
 	$(MAKE) --no-print-directory BUILD=build/smoke-panic KDEFS="-DSMOKE -DSMOKE_PANIC" iso
 	tests/smoke.sh build/smoke-panic/tiny.iso bios panic
 	tests/smoke.sh build/smoke/tiny.iso bios ok q35,i8042=off "ps2: no controller"
+	tests/smoke.sh build/smoke/tiny.iso bios ok q35,acpi=off "acpi: rev 0"
+	$(MAKE) --no-print-directory BUILD=build/smoke-noacpi KDEFS="-DSMOKE -DSMOKE_NO_ACPI" iso
+	tests/smoke.sh build/smoke-noacpi/tiny.iso bios ok q35 "acpi: not provided"
 
 clean:
 	rm -rf build

@@ -48,6 +48,9 @@ bool boot_init(void) {
     bootinfo.memmap = memmap_req.response;
     if (rsdp_req.response)
         bootinfo.rsdp = rsdp_req.response->address;
+#ifdef SMOKE_NO_ACPI
+    bootinfo.rsdp = 0;  // smoke test: behave as if the bootloader found no RSDP
+#endif
     if (smbios_req.response) {
         bootinfo.smbios32 = smbios_req.response->entry_32;
         bootinfo.smbios64 = smbios_req.response->entry_64;

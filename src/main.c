@@ -3,6 +3,7 @@
 #include "boot.h"
 #include "gfx/gfx.h"
 #include "info/cpu.h"
+#include "info/fw.h"
 #include "info/mem.h"
 #include "info/rtc.h"
 #include "input/input.h"
@@ -19,6 +20,7 @@ static void demo_screen(void) {
 }
 
 static struct cpu_info cpu;
+static struct fw_info fw;
 
 void kmain(void) {
     serial_init();
@@ -62,6 +64,7 @@ void kmain(void) {
     } else {
         klog("mem: no memory map from bootloader");
     }
+    fw_probe(&fw);
     demo_screen();
     klog("PROBE OK");
     klog("UI READY");
