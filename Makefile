@@ -1,0 +1,110 @@
+# tiny — bare-metal x86_64 system info tool. See README.md.
+
+CC      := clang
+LD      := ld.lld
+NASM    := nasm
+HOSTCC  := gcc
+QEMU    := qemu-system-x86_64
+
+BUILD   ?= build
+KDEFS   ?=
+
+LIMINE_TAG := v11.4.1-binary
+LIMINE_DIR := limine
+OVMF_DIR   := /usr/share/edk2/OvmfX64
+
+KCFLAGS := --target=x86_64-unknown-none-elf -std=gnu11 -O2 -g -pipe \
+	-Wall -Wextra -Werror=implicit-function-declaration \
+	-ffreestanding -fno-stack-protector -fno-stack-check -fno-PIC \
+	-fno-omit-frame-pointer -mno-red-zone -mcmodel=kernel -mgeneral-regs-only \
+	-Isrc $(KDEFS)
+KLDFLAGS  := -nostdlib -static -z max-page-size=0x1000 -T linker.ld
+NASMFLAGS := -f elf64 -g
+HOSTCFLAGS := -std=gnu11 -O0 -g -Wall -Wextra -Isrc -Itests -fsanitize=address,undefined
+
+CSRCS  := $(shell find src -name '*.c')
+ASRCS  := $(shell find src -name '*.asm')
+OBJS   := $(CSRCS:%.c=$(BUILD)/%.o) $(ASRCS:%.asm=$(BUILD)/%.asm.o)
+KERNEL := $(BUILD)/kernel.elf
+ISO    := $(BUILD)/tiny.iso
+
+QEMUFLAGS := -M q35 -m 512M -serial stdio -no-reboot
+
+.PHONY: all iso run run-uefi test smoke clean distclean
+all: $(ISO)
+iso: $(ISO)
+
+$(BUILD)/%.o: %.c
+	@mkdir -p $(dir $@)
+	$(CC) $(KCFLAGS) -MMD -MP -c $< -o $@
+
+$(BUILD)/%.asm.o: %.asm
+	@mkdir -p $(dir $@)
+	$(NASM) $(NASMFLAGS) $< -o $@
+
+$(KERNEL): $(OBJS) linker.ld
+	$(LD) $(KLDFLAGS) $(OBJS) -o $@
+
+$(LIMINE_DIR)/limine:
+	rm -rf $(LIMINE_DIR)
+	git clone --depth=1 --branch=$(LIMINE_TAG) https://github.com/Limine-Bootloader/Limine.git $(LIMINE_DIR)
+	$(MAKE) -C $(LIMINE_DIR) CC=$(HOSTCC)
+
+$(ISO): $(KERNEL) limine.conf $(LIMINE_DIR)/limine
+	rm -rf $(BUILD)/iso_root
+	mkdir -p $(BUILD)/iso_root/boot/limine $(BUILD)/iso_root/EFI/BOOT
+	cp $(KERNEL) $(BUILD)/iso_root/boot/kernel.elf
+	cp limine.conf $(LIMINE_DIR)/limine-bios.sys $(LIMINE_DIR)/limine-bios-cd.bin \
+		$(LIMINE_DIR)/limine-uefi-cd.bin $(BUILD)/iso_root/boot/limine/
+	cp $(LIMINE_DIR)/BOOTX64.EFI $(BUILD)/iso_root/EFI/BOOT/
+	xorriso -as mkisofs -quiet -R -r -J -b boot/limine/limine-bios-cd.bin \
+		-no-emul-boot -boot-load-size 4 -boot-info-table -hfsplus \
+		-apm-block-size 2048 --efi-boot boot/limine/limine-uefi-cd.bin \
+		-efi-boot-part --efi-boot-image --protective-msdos-label \
+		$(BUILD)/iso_root -o $@
+	$(LIMINE_DIR)/limine bios-install $@
+
+run: $(ISO)
+	$(QEMU) $(QEMUFLAGS) -cdrom $(ISO) -boot d
+
+$(BUILD)/ovmf-vars.fd:
+	@mkdir -p $(BUILD)
+	cp $(OVMF_DIR)/OVMF_VARS.fd $@
+
+run-uefi: $(ISO) $(BUILD)/ovmf-vars.fd
+	$(QEMU) $(QEMUFLAGS) \
+		-drive if=pflash,unit=0,format=raw,readonly=on,file=$(OVMF_DIR)/OVMF_CODE.fd \
+		-drive if=pflash,unit=1,format=raw,file=$(BUILD)/ovmf-vars.fd \
+		-cdrom $(ISO) -boot d
+
+# --- host unit tests ----------------------------------------------------------
+TESTS :=
+# (add "TESTS += test_x" and "deps_test_x := ..." lines above this comment)
+
+define TEST_RULE
+$(BUILD)/tests/$(1): tests/$(1).c $$(deps_$(1)) tests/test.h
+	@mkdir -p $$(dir $$@)
+	$$(HOSTCC) $$(HOSTCFLAGS) tests/$(1).c $$(deps_$(1)) -o $$@
+endef
+$(foreach t,$(TESTS),$(eval $(call TEST_RULE,$(t))))
+
+test: $(TESTS:%=$(BUILD)/tests/%)
+	@for t in $^; do ./$$t || exit 1; done
+	@echo "all unit tests passed"
+
+# --- QEMU smoke tests ---------------------------------------------------------
+SMOKE_EXPECT :=
+# (add "SMOKE_EXPECT += \"pattern\"" lines above this comment)
+
+smoke:
+	$(MAKE) --no-print-directory BUILD=build/smoke KDEFS=-DSMOKE iso
+	tests/smoke.sh build/smoke/tiny.iso bios ok q35 $(SMOKE_EXPECT)
+	tests/smoke.sh build/smoke/tiny.iso uefi ok q35 $(SMOKE_EXPECT)
+
+clean:
+	rm -rf build
+
+distclean: clean
+	rm -rf $(LIMINE_DIR)
+
+-include $(OBJS:.o=.d)
