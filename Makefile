@@ -30,7 +30,7 @@ ISO    := $(BUILD)/tiny.iso
 
 QEMUFLAGS := -M q35 -m 512M -serial stdio -no-reboot
 
-.PHONY: all iso run run-uefi test smoke clean distclean
+.PHONY: all iso run run-uefi shots test smoke clean distclean
 all: $(ISO)
 iso: $(ISO)
 
@@ -77,6 +77,11 @@ run-uefi: $(ISO) $(BUILD)/ovmf-vars.fd
 		-drive if=pflash,unit=1,format=raw,file=$(BUILD)/ovmf-vars.fd \
 		-cdrom $(ISO) -boot d
 
+shots: $(ISO)
+	tools/qemu-shot.py $(ISO) build/shots shot:cpu right shot:memory pgdn shot:memory-pgdn \
+		f3 shot:firmware end shot:firmware-end s shot:confirm-shutdown esc shot:cancelled
+	tools/qemu-shot.py $(ISO) build/shots --uefi f3 shot:uefi-firmware
+
 # --- host unit tests ----------------------------------------------------------
 TESTS :=
 TESTS += test_fmt
@@ -113,11 +118,11 @@ test: $(TESTS:%=$(BUILD)/tests/%)
 
 # --- QEMU smoke tests ---------------------------------------------------------
 SMOKE_EXPECT :=
-SMOKE_EXPECT += "rtc: 20"
 SMOKE_EXPECT += "ps2: keyboard controller ok"
 SMOKE_EXPECT += "tsc: " "cpu: "
 SMOKE_EXPECT += "MiB available"
 SMOKE_EXPECT += "acpi: rev" "smbios: QEMU"
+SMOKE_EXPECT += "power: PM1a_CNT"
 # (add "SMOKE_EXPECT += \"pattern\"" lines above this comment)
 
 smoke:

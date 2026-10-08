@@ -5,23 +5,18 @@
 #include "info/cpu.h"
 #include "info/fw.h"
 #include "info/mem.h"
-#include "info/rtc.h"
+#include "info/tsc.h"
 #include "input/input.h"
 #include "lib/fmt.h"
 #include "lib/serial.h"
 #include "power.h"
-
-static void demo_screen(void) {
-    int cols = gfx_cols(), rows = gfx_rows();
-    gfx_fill(0, 0, cols, rows, ' ', ATTR(C_LGRAY, C_BLUE));
-    gfx_puts(2, 1, "tiny: framebuffer text test", ATTR(C_YELLOW, C_BLUE), cols - 4);
-    for (int i = 0; i < 256; i++)
-        gfx_put(2 + (i % 32) * 2, 3 + i / 32, (uint8_t)i, ATTR(C_WHITE, C_BLUE));
-    gfx_flush();
-}
+#include "ui/page.h"
+#include "ui/tabs.h"
+#include "ui/ui.h"
 
 static struct cpu_info cpu;
 static struct fw_info fw;
+static struct page pages[3];
 
 void kmain(void) {
     serial_init();
@@ -44,13 +39,6 @@ void kmain(void) {
     __asm__ volatile("ud2");
 #endif
 
-    struct datetime now;
-    if (rtc_read(&now, NULL))
-        klog("rtc: %04d-%02d-%02d %02d:%02d:%02d", now.year, now.month, now.day,
-             now.hour, now.min, now.sec);
-    else
-        klog("rtc: not responding");
-
     bool keyboard = input_init();
     cpu_probe(&cpu);
     klog("cpu: %s | %s | family %u model %u stepping %u | %lu logical | %zu features, %zu caches",
@@ -67,19 +55,12 @@ void kmain(void) {
     }
     fw_probe(&fw);
     power_init(&fw.acpi);
-#ifdef SMOKE_SHUTDOWN
-    power_shutdown();
-#endif
-    demo_screen();
+
+    size_t width = (size_t)gfx_cols() - 4;
+    tab_cpu_build(&pages[0], &cpu, width);
+    tab_mem_build(&pages[1], bootinfo.memmap);
+    tab_fw_build(&pages[2], &fw);
     klog("PROBE OK");
-    klog("UI READY");
-#ifdef SMOKE
-    qemu_debug_exit(0x10);
-#endif
-    for (;;) {
-        struct key_event k;
-        if (keyboard && input_poll(&k))
-            klog("key: %d '%c'", k.key, k.ch ? k.ch : ' ');
-        cpu_pause();
-    }
+
+    ui_run(pages, 3, keyboard);
 }
