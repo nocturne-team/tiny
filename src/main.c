@@ -10,6 +10,7 @@
 #include "input/input.h"
 #include "lib/fmt.h"
 #include "lib/serial.h"
+#include "mm/pages.h"
 #include "power.h"
 #include "ui/page.h"
 #include "ui/tabs.h"
@@ -57,6 +58,7 @@ void kmain(void) {
     }
     pci_scan(pci_config_read, &pci);
     klog("pci: %zu devices%s", pci.count, pci.truncated ? " (truncated)" : "");
+    pages_init();
     fw_probe(&fw);
     power_init(&fw.acpi);
 

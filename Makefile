@@ -111,6 +111,8 @@ TESTS += test_physmap
 deps_test_physmap := src/info/physmap.c
 TESTS += test_edid
 deps_test_edid := src/info/edid.c src/lib/fmt.c
+TESTS += test_pool
+deps_test_pool := src/mm/pool.c
 # (add "TESTS += test_x" and "deps_test_x := ..." lines above this comment)
 
 define TEST_RULE
@@ -134,6 +136,7 @@ SMOKE_EXPECT += "power: PM1a_CNT"
 SMOKE_EXPECT += "pci: "
 SMOKE_EXPECT += "memory devices"
 SMOKE_EXPECT += "edid: "
+SMOKE_EXPECT += "pages: "
 # (add "SMOKE_EXPECT += \"pattern\"" lines above this comment)
 
 smoke:
