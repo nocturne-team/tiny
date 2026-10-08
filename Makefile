@@ -83,6 +83,8 @@ TESTS += test_fmt
 deps_test_fmt := src/lib/fmt.c
 TESTS += test_time
 deps_test_time := src/lib/time.c src/lib/fmt.c
+TESTS += test_layout
+deps_test_layout := src/gfx/layout.c
 # (add "TESTS += test_x" and "deps_test_x := ..." lines above this comment)
 
 define TEST_RULE
