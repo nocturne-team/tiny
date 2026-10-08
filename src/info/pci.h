@@ -30,3 +30,11 @@ const char *pci_vendor_name(uint16_t vendor);
 
 // Hardware: legacy configuration mechanism #1 (ports 0xCF8/0xCFC).
 uint32_t pci_config_read(uint8_t bus, uint8_t dev, uint8_t fn, uint8_t off);
+
+// Pure: base address of a memory BAR (`hi` used only when `lo` says 64-bit), 0 for I/O BARs.
+uint64_t pci_bar_base(uint32_t lo, uint32_t hi);
+// Pure: size of a memory BAR from the value read back after writing all ones, 0 if none.
+uint64_t pci_bar_size(uint32_t probe);
+
+// Hardware: writes the 32-bit config register at `off` (dword aligned).
+void pci_config_write(uint8_t bus, uint8_t dev, uint8_t fn, uint8_t off, uint32_t v);

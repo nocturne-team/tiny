@@ -117,6 +117,8 @@ TESTS += test_hid_kbd
 deps_test_hid_kbd := src/usb/hid_kbd.c
 TESTS += test_usb_desc
 deps_test_usb_desc := src/usb/usb_desc.c
+TESTS += test_xhci_calc
+deps_test_xhci_calc := src/usb/xhci_calc.c src/lib/fmt.c
 # (add "TESTS += test_x" and "deps_test_x := ..." lines above this comment)
 
 define TEST_RULE

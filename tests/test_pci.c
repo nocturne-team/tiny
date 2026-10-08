@@ -97,5 +97,16 @@ int main(void) {
     test_scan();
     test_empty_and_truncated();
     test_names();
+    // BAR helpers.
+    CHECK_EQ(pci_bar_base(0xFEBF0000, 0), 0xFEBF0000);
+    CHECK_EQ(pci_bar_base(0xFEBF0008, 0), 0xFEBF0000);               // prefetchable flag masked
+    CHECK_EQ(pci_bar_base(0xFEB00004, 0x1), 0x1FEB00000ull);         // 64-bit BAR
+    CHECK_EQ(pci_bar_base(0xFEB00000, 0x1), 0xFEB00000);             // 32-bit: hi ignored
+    CHECK_EQ(pci_bar_base(0xC001, 0), 0);                            // I/O BAR
+    CHECK_EQ(pci_bar_size(0xFFFF0000), 0x10000);
+    CHECK_EQ(pci_bar_size(0xFFFF0004), 0x10000);
+    CHECK_EQ(pci_bar_size(0xFFFFC000), 0x4000);
+    CHECK_EQ(pci_bar_size(0), 0);
+    CHECK_EQ(pci_bar_size(0xFFFFFF01), 0);                           // I/O
     TEST_MAIN_END();
 }

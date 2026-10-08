@@ -147,3 +147,19 @@ const char *pci_vendor_name(uint16_t vendor) {
             return vendor_table[i].name;
     return NULL;
 }
+
+uint64_t pci_bar_base(uint32_t lo, uint32_t hi) {
+    if (lo & 1)
+        return 0;
+    uint64_t base = lo & ~0xFu;
+    if (((lo >> 1) & 3) == 2)
+        base |= (uint64_t)hi << 32;
+    return base;
+}
+
+uint64_t pci_bar_size(uint32_t probe) {
+    if (probe & 1)
+        return 0;
+    uint32_t mask = probe & ~0xFu;
+    return mask ? (uint32_t)(~mask + 1u) : 0;
+}
