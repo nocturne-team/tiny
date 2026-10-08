@@ -125,9 +125,15 @@ static void test_fw(void) {  // Review Focus #5
     strcpy(f.acpi.tables[0].oem_id, "BOCHS");
     f.acpi.tables[0].length = 120;
     f.acpi.tables[0].checksum_ok = false;
+    f.acpi.tables[0].mapped = true;
     tab_fw_build(&p, &f);
     CHECK_STR(find_line(&p, "Firmware") + 16, "UEFI (64-bit)");
     CHECK_STR(find_line(&p, "  APIC"), "  APIC  BOCHS        120  (bad csum)");
+
+    f.acpi.table_count = 2;
+    strcpy(f.acpi.tables[1].sig, "????");
+    tab_fw_build(&p, &f);
+    CHECK_STR(find_line(&p, "  ????"), "  ????  -              -  (unmapped)");
 }
 
 static void test_pci(void) {

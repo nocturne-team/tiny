@@ -2,6 +2,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+#include "info/physmap.h"
 
 #define SMBIOS_MAX_DIMMS 16
 
@@ -32,4 +33,6 @@ struct smbios_info {
 // entry32/entry64 are virtual pointers to the entry points (either may be NULL).
 // The structure table address inside is physical and converted with `hhdm`.
 const char *smbios_memory_type_name(uint8_t type);
-void smbios_parse(const void *entry32, const void *entry64, uint64_t hhdm, struct smbios_info *out);
+// Only the part of the structure table covered by `mapped` is read (NULL = trust all).
+void smbios_parse(const void *entry32, const void *entry64, uint64_t hhdm,
+                  const struct phys_ranges *mapped, struct smbios_info *out);

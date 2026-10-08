@@ -86,11 +86,15 @@ void power_shutdown(void) {
             outw(pw.pm1b_cnt, (uint16_t)(((pw.slp_typb & 7) << 10) | (1 << 13)));
         delay_ms(500);
     }
-    klog("power: trying emulator shutdown ports");
-    outw(0x604, 0x2000);   // QEMU q35 / newer pc
-    outw(0xB004, 0x2000);  // Bochs, older QEMU
-    outw(0x4004, 0x3400);  // VirtualBox
-    delay_ms(500);
+    // Emulator-only ports: on real boards these can be live PM registers
+    // (0x4004 is PM1_CNT when PMBASE is 0x4000), so only poke them in a VM.
+    if (cpuid(1, 0).ecx & (1u << 31)) {
+        klog("power: trying emulator shutdown ports");
+        outw(0x604, 0x2000);   // QEMU q35 / newer pc
+        outw(0xB004, 0x2000);  // Bochs, older QEMU
+        outw(0x4004, 0x3400);  // VirtualBox
+        delay_ms(500);
+    }
 
     klog("power: shutdown failed, halting");
     if (gfx_ready()) {

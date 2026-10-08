@@ -67,7 +67,10 @@ void tab_fw_build(struct page *p, const struct fw_info *f) {
     page_add(p, STYLE_DIM, "  %-4s  %-6s  %8s", "Sig", "OEM ID", "Length");
     for (size_t i = 0; i < a->table_count; i++) {
         const struct acpi_table *t = &a->tables[i];
-        page_add(p, t->checksum_ok ? STYLE_TEXT : STYLE_WARN, "  %-4s  %-6s  %8u%s",
-                 t->sig, t->oem_id, t->length, t->checksum_ok ? "" : "  (bad csum)");
+        if (!t->mapped)
+            page_add(p, STYLE_WARN, "  %-4s  %-6s  %8s  (unmapped)", t->sig, "-", "-");
+        else
+            page_add(p, t->checksum_ok ? STYLE_TEXT : STYLE_WARN, "  %-4s  %-6s  %8u%s",
+                     t->sig, t->oem_id, t->length, t->checksum_ok ? "" : "  (bad csum)");
     }
 }

@@ -18,8 +18,15 @@ bool ps2_decode(struct ps2_decoder *d, uint8_t sc, struct key_event *out) {
     }
     bool ext = d->e0;
     d->e0 = false;
-    if (sc & 0x80)
-        return false;  // releases, plus 0xE1/0xFA/0xFE controller bytes
+    uint8_t code = sc & 0x7F, bit = (uint8_t)(1u << (code & 7));
+    uint8_t *held = &d->down[ext][code >> 3];
+    if (sc & 0x80) {  // releases, plus 0xE1/0xFA/0xFE controller bytes
+        *held &= (uint8_t)~bit;
+        return false;
+    }
+    bool repeat = *held & bit;
+    *held |= bit;
+    out->repeat = repeat;
 
     // Navigation keys: grey keys send E0 xx, keypad keys (NumLock off) send xx.
     enum key k = KEY_NONE;

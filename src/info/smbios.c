@@ -145,7 +145,8 @@ static void walk(const uint8_t *t, size_t len, struct smbios_info *out) {
     }
 }
 
-void smbios_parse(const void *entry32, const void *entry64, uint64_t hhdm, struct smbios_info *out) {
+void smbios_parse(const void *entry32, const void *entry64, uint64_t hhdm,
+                  const struct phys_ranges *mapped, struct smbios_info *out) {
     memset(out, 0, sizeof *out);
     uint64_t table_phys;
     size_t table_len;
@@ -174,5 +175,6 @@ void smbios_parse(const void *entry32, const void *entry64, uint64_t hhdm, struc
         return;
     if (table_len > MAX_TABLE_LEN)
         table_len = MAX_TABLE_LEN;
+    table_len = (size_t)phys_mapped_len(mapped, table_phys, table_len);
     walk((const uint8_t *)(uintptr_t)(table_phys + hhdm), table_len, out);
 }

@@ -8,7 +8,8 @@ enum key {
 
 struct key_event {
     enum key key;
-    char ch;  // lowercase ASCII for KEY_CHAR, otherwise 0
+    char ch;      // lowercase ASCII for KEY_CHAR, otherwise 0
+    bool repeat;  // typematic repeat of a key that is still held down
 };
 
 // Keyboard backend (PS/2 today; a USB backend can implement the same pair).

@@ -97,16 +97,18 @@ deps_test_cpu := src/info/cpu_decode.c
 TESTS += test_mem
 deps_test_mem := src/info/mem.c
 TESTS += test_acpi
-deps_test_acpi := src/info/acpi.c src/lib/fmt.c
+deps_test_acpi := src/info/acpi.c src/info/physmap.c src/lib/fmt.c
 TESTS += test_smbios
-deps_test_smbios := src/info/smbios.c src/lib/fmt.c
+deps_test_smbios := src/info/smbios.c src/info/physmap.c src/lib/fmt.c
 TESTS += test_page test_tabs
 deps_test_page := src/ui/page.c src/lib/fmt.c
-deps_test_tabs := src/info/smbios.c src/ui/tab_about.c src/ui/tab_pci.c src/info/pci.c src/ui/tab_cpu.c src/ui/tab_mem.c src/ui/tab_fw.c src/ui/page.c src/info/mem.c src/lib/fmt.c
+deps_test_tabs := src/info/smbios.c src/info/physmap.c src/ui/tab_about.c src/ui/tab_pci.c src/info/pci.c src/ui/tab_cpu.c src/ui/tab_mem.c src/ui/tab_fw.c src/ui/page.c src/info/mem.c src/lib/fmt.c
 TESTS += test_pci
 deps_test_pci := src/info/pci.c
 TESTS += test_braille
 deps_test_braille := src/gfx/braille.c
+TESTS += test_physmap
+deps_test_physmap := src/info/physmap.c
 # (add "TESTS += test_x" and "deps_test_x := ..." lines above this comment)
 
 define TEST_RULE

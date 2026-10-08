@@ -1,5 +1,6 @@
 #include "test.h"
 #include "info/smbios.h"
+#include "info/physmap.h"
 #include <stdint.h>
 #include <stdlib.h>
 
@@ -111,7 +112,7 @@ static struct smbios_info s;
 static void test_ep32(void) {
     build_table("QEMU");
     uint8_t *e = build_ep32(0, PHYS_BASE + TABLE_OFF, (uint16_t)tlen);
-    smbios_parse(e, NULL, hhdm(), &s);
+    smbios_parse(e, NULL, hhdm(), NULL, &s);
     CHECK(s.present);
     CHECK(!s.is64);
     CHECK(s.checksum_ok);
@@ -131,7 +132,7 @@ static void test_ep64_preferred(void) {
     build_table("QEMU");
     uint8_t *e32 = build_ep32(0, PHYS_BASE + TABLE_OFF, (uint16_t)tlen);
     uint8_t *e64 = build_ep64(64);
-    smbios_parse(e32, e64, hhdm(), &s);
+    smbios_parse(e32, e64, hhdm(), NULL, &s);
     CHECK(s.is64);
     CHECK_EQ(s.major, 3);
     CHECK_EQ(s.minor, 5);
@@ -142,18 +143,18 @@ static void test_bad_checksum(void) {
     build_table("QEMU");
     uint8_t *e = build_ep32(0, PHYS_BASE + TABLE_OFF, (uint16_t)tlen);
     e[10] ^= 0x55;
-    smbios_parse(e, NULL, hhdm(), &s);
+    smbios_parse(e, NULL, hhdm(), NULL, &s);
     CHECK(s.present);
     CHECK(!s.checksum_ok);
     CHECK_STR(s.sys_vendor, "QEMU");
 }
 
 static void test_missing(void) {
-    smbios_parse(NULL, NULL, 0, &s);
+    smbios_parse(NULL, NULL, 0, NULL, &s);
     CHECK(!s.present);
     memset(arena, 0, sizeof arena);
     memcpy(arena, "_XX_", 4);
-    smbios_parse(arena, NULL, hhdm(), &s);
+    smbios_parse(arena, NULL, hhdm(), NULL, &s);
     CHECK(!s.present);
 }
 
@@ -161,7 +162,7 @@ static void test_bad_string_index(void) {
     build_table("QEMU");
     tab[type1_off + 5] = 9;  // product -> string 9, which does not exist
     uint8_t *e = build_ep32(0, PHYS_BASE + TABLE_OFF, (uint16_t)tlen);
-    smbios_parse(e, NULL, hhdm(), &s);
+    smbios_parse(e, NULL, hhdm(), NULL, &s);
     CHECK_STR(s.sys_product, "");
     CHECK_STR(s.sys_vendor, "QEMU");
 }
@@ -169,7 +170,7 @@ static void test_bad_string_index(void) {
 static void test_garbage_strings(void) {
     build_table("\x01QEMU\x7f with a very long vendor name that keeps_going_and_going");
     uint8_t *e = build_ep32(0, PHYS_BASE + TABLE_OFF, (uint16_t)tlen);
-    smbios_parse(e, NULL, hhdm(), &s);
+    smbios_parse(e, NULL, hhdm(), NULL, &s);
     CHECK_EQ(strlen(s.sys_vendor), sizeof s.sys_vendor - 1);
     CHECK(strncmp(s.sys_vendor, "?QEMU? with", 11) == 0);
 }
@@ -193,7 +194,7 @@ static void test_truncated_table(void) {
     put32(ep + 24, (uint32_t)fake_phys);
     fix_csum(ep, 0x1F, 4);
 
-    smbios_parse(ep, NULL, heap_hhdm, &s);
+    smbios_parse(ep, NULL, heap_hhdm, NULL, &s);
     CHECK(s.present);
     CHECK_STR(s.bios_vendor, "American Megatrends Inc.");
     CHECK_STR(s.sys_vendor, "");  // structure dropped: its string set never ends
@@ -219,7 +220,7 @@ static uint8_t *dimm(uint8_t flen, uint16_t size, uint8_t type, uint16_t speed,
 
 static void parse_table(void) {
     uint8_t *e = build_ep32(0, PHYS_BASE + TABLE_OFF, (uint16_t)tlen);
-    smbios_parse(e, NULL, hhdm(), &s);
+    smbios_parse(e, NULL, hhdm(), NULL, &s);
 }
 
 static void start_table(void) {
@@ -281,7 +282,38 @@ static void test_memory_type_names(void) {
     CHECK_STR(smbios_memory_type_name(0x99), "unknown");
 }
 
+static void test_mapped_extent(void) {
+    // SMBIOS 3 gives only a *maximum* table size. With no end-of-table marker the
+    // walk must stop where mapped memory ends, not at the declared maximum.
+    build_table("QEMU");
+    size_t len = tlen - 6;  // drop the type 127 terminator
+    uint8_t *heap = malloc(len);
+    memcpy(heap, tab, len);
+    uint64_t fake_phys = 0x400000;
+
+    uint8_t ep[0x18];
+    memset(ep, 0, sizeof ep);
+    memcpy(ep, "_SM3_", 5);
+    ep[6] = 0x18; ep[7] = 3; ep[8] = 5;
+    put32(ep + 12, 0x10000);
+    put64(ep + 16, fake_phys);
+    fix_csum(ep, 0x18, 5);
+
+    struct phys_range r[] = { { fake_phys, len } };
+    struct phys_ranges m = { r, 1 };
+    smbios_parse(NULL, ep, (uint64_t)(uintptr_t)heap - fake_phys, &m, &s);
+    CHECK(s.present);
+    CHECK_STR(s.sys_vendor, "QEMU");
+    free(heap);
+
+    struct phys_ranges none = { NULL, 0 };  // table not mapped at all
+    smbios_parse(NULL, ep, 0, &none, &s);
+    CHECK(s.present);
+    CHECK_STR(s.sys_vendor, "");
+}
+
 int main(void) {
+    test_mapped_extent();
     test_dimms();
     test_dimm_unknown_and_truncated();
     test_memory_type_names();

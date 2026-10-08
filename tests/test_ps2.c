@@ -69,6 +69,23 @@ int main(void) {
     FEED(0xFA, 0xFE, 0xE0, 0x5B);  // controller ACK/resend bytes, Windows key
     CHECK_EQ(count, 0);
 
+    FEED(0x13, 0x13, 0x13);  // r held down: typematic repeats are flagged
+    CHECK_EQ(count, 3);
+    CHECK(!ev[0].repeat);
+    CHECK(ev[1].repeat);
+    CHECK(ev[2].repeat);
+
+    FEED(0x13, 0x93, 0x13);  // r pressed twice
+    CHECK_EQ(count, 2);
+    CHECK(!ev[0].repeat);
+    CHECK(!ev[1].repeat);
+
+    FEED(0xE0, 0x50, 0xE0, 0x50, 0xE0, 0xD0, 0x50);  // held grey down, released; then keypad down
+    CHECK_EQ(count, 3);
+    CHECK(!ev[0].repeat);
+    CHECK(ev[1].repeat);
+    CHECK(!ev[2].repeat);  // keypad 2 is a different physical key
+
     FEED(0xE0, 0x2A, 0x48);  // a fake shift must not leave the E0 flag set
     CHECK_EQ(count, 1);
     CHECK_EQ(ev[0].key, KEY_UP);

@@ -6,6 +6,39 @@
 #include "lib/serial.h"
 #include "lib/string.h"
 
+#define MAX_RANGES 256
+
+static struct phys_range ranges[MAX_RANGES];
+
+// Memory-map types Limine maps in the HHDM at base revision 4 and later.
+static bool hhdm_mapped(uint64_t type) {
+    switch (type) {
+    case LIMINE_MEMMAP_USABLE:
+    case LIMINE_MEMMAP_BOOTLOADER_RECLAIMABLE:
+    case LIMINE_MEMMAP_EXECUTABLE_AND_MODULES:
+    case LIMINE_MEMMAP_FRAMEBUFFER:
+    case LIMINE_MEMMAP_ACPI_RECLAIMABLE:
+    case LIMINE_MEMMAP_ACPI_NVS:
+    case LIMINE_MEMMAP_RESERVED_MAPPED:
+        return true;
+    default:
+        return false;
+    }
+}
+
+// Ranges firmware tables may be read from; NULL (trust Limine) without a memory map.
+static const struct phys_ranges *mapped_ranges(struct phys_ranges *out) {
+    const struct limine_memmap_response *map = bootinfo.memmap;
+    if (!map)
+        return NULL;
+    out->r = ranges;
+    out->n = 0;
+    for (uint64_t i = 0; i < map->entry_count && out->n < MAX_RANGES; i++)
+        if (hhdm_mapped(map->entries[i]->type))
+            ranges[out->n++] = (struct phys_range){ map->entries[i]->base, map->entries[i]->length };
+    return out;
+}
+
 void fw_probe(struct fw_info *f) {
     memset(f, 0, sizeof *f);
     f->firmware_type = bootinfo.firmware;
@@ -36,8 +69,10 @@ void fw_probe(struct fw_info *f) {
 
     // Table addresses are physical: without an HHDM offset they cannot be read.
     if (bootinfo.hhdm) {
-        acpi_parse(bootinfo.rsdp, bootinfo.hhdm, &f->acpi);
-        smbios_parse(bootinfo.smbios32, bootinfo.smbios64, bootinfo.hhdm, &f->smbios);
+        struct phys_ranges storage;
+        const struct phys_ranges *mapped = mapped_ranges(&storage);
+        acpi_parse(bootinfo.rsdp, bootinfo.hhdm, mapped, &f->acpi);
+        smbios_parse(bootinfo.smbios32, bootinfo.smbios64, bootinfo.hhdm, mapped, &f->smbios);
     }
 
     if (f->acpi.present)

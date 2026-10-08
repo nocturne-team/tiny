@@ -19,21 +19,29 @@ static const uint8_t *virt(uint64_t phys, uint64_t hhdm) {
     return (const uint8_t *)(uintptr_t)(phys + hhdm);
 }
 
-static bool add_table(struct acpi_info *out, const uint8_t *hdr) {
+static bool add_table(struct acpi_info *out, uint64_t phys, uint64_t hhdm, const struct phys_ranges *m) {
     if (out->table_count == ACPI_MAX_TABLES) {
         out->truncated = true;
         return false;
     }
     struct acpi_table *t = &out->tables[out->table_count++];
+    memset(t, 0, sizeof *t);
+    if (!phys_ok(m, phys, HEADER_LEN)) {
+        memcpy(t->sig, "????", 5);
+        return true;
+    }
+    const uint8_t *hdr = virt(phys, hhdm);
     copy_printable(t->sig, sizeof t->sig, (const char *)hdr, 4);
     copy_printable(t->oem_id, sizeof t->oem_id, (const char *)hdr + 10, 6);
     t->length = acpi_rd32(hdr + 4);
     t->ptr = hdr;
-    t->checksum_ok = sane_length(t->length) && acpi_checksum(hdr, t->length);
+    t->mapped = true;
+    t->readable = sane_length(t->length) && phys_ok(m, phys, t->length);
+    t->checksum_ok = t->readable && acpi_checksum(hdr, t->length);
     return true;
 }
 
-void acpi_parse(const void *rsdp_v, uint64_t hhdm, struct acpi_info *out) {
+void acpi_parse(const void *rsdp_v, uint64_t hhdm, const struct phys_ranges *m, struct acpi_info *out) {
     memset(out, 0, sizeof *out);
     const uint8_t *rsdp = rsdp_v;
     if (!rsdp || memcmp(rsdp, "RSD PTR ", 8) != 0)
@@ -54,17 +62,17 @@ void acpi_parse(const void *rsdp_v, uint64_t hhdm, struct acpi_info *out) {
     if (!root_phys)
         return;
 
-    const uint8_t *root = virt(root_phys, hhdm);
-    add_table(out, root);
-    uint32_t len = acpi_rd32(root + 4);
-    if (!sane_length(len))
+    add_table(out, root_phys, hhdm, m);
+    const struct acpi_table *root = &out->tables[0];
+    if (!root->readable)
         return;
 
-    size_t n = (len - HEADER_LEN) / entry_size;
+    const uint8_t *base = root->ptr;
+    size_t n = (root->length - HEADER_LEN) / entry_size;
     for (size_t i = 0; i < n; i++) {
-        const uint8_t *e = root + HEADER_LEN + i * entry_size;
+        const uint8_t *e = base + HEADER_LEN + i * entry_size;
         uint64_t phys = entry_size == 8 ? acpi_rd64(e) : acpi_rd32(e);
-        if (phys && !add_table(out, virt(phys, hhdm)))
+        if (phys && !add_table(out, phys, hhdm, m))
             break;
     }
 
@@ -76,13 +84,13 @@ void acpi_parse(const void *rsdp_v, uint64_t hhdm, struct acpi_info *out) {
         if (!dsdt && fadt->length >= 44)
             dsdt = acpi_rd32(f + 40);
         if (dsdt)
-            add_table(out, virt(dsdt, hhdm));
+            add_table(out, dsdt, hhdm, m);
     }
 }
 
 const struct acpi_table *acpi_find(const struct acpi_info *info, const char *sig) {
     for (size_t i = 0; i < info->table_count; i++)
-        if (memcmp(info->tables[i].sig, sig, 5) == 0 && sane_length(info->tables[i].length))
+        if (info->tables[i].readable && memcmp(info->tables[i].sig, sig, 5) == 0)
             return &info->tables[i];
     return NULL;
 }

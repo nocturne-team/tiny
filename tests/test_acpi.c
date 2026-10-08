@@ -1,5 +1,6 @@
 #include "test.h"
 #include "info/acpi.h"
+#include "info/physmap.h"
 #include <stdint.h>
 
 #define PHYS_BASE 0x100000ULL
@@ -71,7 +72,7 @@ static struct acpi_info a;
 
 static void test_xsdt(void) {
     build(2);
-    acpi_parse(arena, hhdm(), &a);
+    acpi_parse(arena, hhdm(), NULL, &a);
     CHECK(a.present);
     CHECK_EQ(a.revision, 2);
     CHECK(a.use_xsdt);
@@ -93,7 +94,7 @@ static void test_xsdt(void) {
 
 static void test_rsdt(void) {
     build(0);
-    acpi_parse(arena, hhdm(), &a);
+    acpi_parse(arena, hhdm(), NULL, &a);
     CHECK(a.present);
     CHECK(!a.use_xsdt);
     CHECK_EQ(a.table_count, 4);
@@ -105,7 +106,7 @@ static void test_bad_checksums(void) {
     build(2);
     arena[640 + 20] ^= 0xFF;  // corrupt APIC body
     arena[8] ^= 0x01;         // corrupt RSDP checksum
-    acpi_parse(arena, hhdm(), &a);
+    acpi_parse(arena, hhdm(), NULL, &a);
     CHECK(a.present);
     CHECK(!a.rsdp_checksum_ok);
     CHECK_EQ(a.table_count, 4);
@@ -116,7 +117,7 @@ static void test_bad_checksums(void) {
 static void test_bogus_root_length(void) {
     build(2);
     put32(arena + 64 + 4, 0xFFFFFFFF);
-    acpi_parse(arena, hhdm(), &a);
+    acpi_parse(arena, hhdm(), NULL, &a);
     CHECK(a.present);
     CHECK_EQ(a.table_count, 1);  // only the root itself, flagged
     CHECK(!a.tables[0].checksum_ok);
@@ -130,16 +131,16 @@ static void test_truncation(void) {
     fix_csum(rsdt, 36 + 400, 9);
     put32(arena + 16, (uint32_t)phys(1024));
     fix_csum(arena, 20, 8);
-    acpi_parse(arena, hhdm(), &a);
+    acpi_parse(arena, hhdm(), NULL, &a);
     CHECK(a.truncated);
     CHECK_EQ(a.table_count, ACPI_MAX_TABLES);
 }
 
 static void test_missing(void) {
-    acpi_parse(NULL, 0, &a);
+    acpi_parse(NULL, 0, NULL, &a);
     CHECK(!a.present);
     memset(arena, 0, sizeof arena);
-    acpi_parse(arena, hhdm(), &a);
+    acpi_parse(arena, hhdm(), NULL, &a);
     CHECK(!a.present);
     CHECK(acpi_find(&a, "FACP") == NULL);
 }
@@ -148,8 +149,38 @@ static void test_sanitize(void) {
     build(2);
     arena[640 + 10] = 0x07;  // control byte in APIC OEM ID
     fix_csum(arena + 640, 44, 9);
-    acpi_parse(arena, hhdm(), &a);
+    acpi_parse(arena, hhdm(), NULL, &a);
     CHECK_STR(a.tables[2].oem_id, "?INYOS");
+}
+
+static void test_unmapped_tables(void) {
+    build(2);
+    // Everything mapped except the APIC table at 640..767.
+    struct phys_range r[] = { { phys(0), 640 }, { phys(768), sizeof arena - 768 } };
+    struct phys_ranges m = { r, 2 };
+    acpi_parse(arena, hhdm(), &m, &a);
+    CHECK_EQ(a.table_count, 4);
+    CHECK(a.tables[1].mapped);
+    CHECK(!a.tables[2].mapped);
+    CHECK_STR(a.tables[2].sig, "????");
+    CHECK(!a.tables[2].checksum_ok);
+    CHECK(acpi_find(&a, "APIC") == NULL);
+    CHECK(acpi_find(&a, "DSDT") != NULL);
+
+    // DSDT unmapped: listed, but never handed to the S5 scanner.
+    struct phys_range r2[] = { { phys(0), 768 } };
+    struct phys_ranges m2 = { r2, 1 };
+    acpi_parse(arena, hhdm(), &m2, &a);
+    CHECK_STR(a.tables[3].sig, "????");
+    CHECK(acpi_find(&a, "DSDT") == NULL);
+
+    // Root table header mapped but its body (entry array) is not.
+    struct phys_range r3[] = { { phys(0), 100 } };
+    struct phys_ranges m3 = { r3, 1 };
+    acpi_parse(arena, hhdm(), &m3, &a);
+    CHECK_EQ(a.table_count, 1);
+    CHECK(a.tables[0].mapped);
+    CHECK(!a.tables[0].checksum_ok);
 }
 
 static void test_s5(void) {
@@ -200,6 +231,7 @@ int main(void) {
     test_truncation();
     test_missing();
     test_sanitize();
+    test_unmapped_tables();
     test_s5();
     TEST_MAIN_END();
 }

@@ -149,6 +149,9 @@ static void draw_footer(void) {
 }
 
 static void handle(const struct key_event *k) {
+    // Letter keys are commands (R/S confirm); a held key must not confirm itself.
+    if (k->key == KEY_CHAR && k->repeat)
+        return;
     if (pending) {
         char want = pending;
         pending = 0;
