@@ -37,6 +37,31 @@ void tab_fw_build(struct page *p, const struct fw_info *f) {
         page_kv(p, "RTC", "not responding");
 
     page_blank(p);
+    page_add(p, STYLE_HEAD, "Monitor");
+    const struct edid_info *e = &f->edid;
+    if (!f->have_edid) {
+        page_add(p, STYLE_WARN, "No EDID from the firmware");
+    } else if (!e->valid) {
+        page_add(p, STYLE_WARN, "EDID present but invalid");
+    } else {
+        page_kv(p, "Name", "%s", dash(e->name));
+        page_kv(p, "Manufacturer", "%s, product 0x%04x", e->manufacturer, e->product);
+        if (e->model_year)
+            page_kv(p, "Manufactured", "model year %d", e->year);
+        else if (e->week)
+            page_kv(p, "Manufactured", "week %d of %d", e->week, e->year);
+        else
+            page_kv(p, "Manufactured", "%d", e->year);
+        if (e->diagonal_tenths)
+            page_kv(p, "Size", "%u x %u cm (%u.%u\")", e->width_cm, e->height_cm,
+                    e->diagonal_tenths / 10, e->diagonal_tenths % 10);
+        if (e->pref_width)
+            page_kv(p, "Preferred mode", "%ux%u @ %u.%02u Hz", e->pref_width, e->pref_height,
+                    e->pref_centihz / 100, e->pref_centihz % 100);
+        page_kv(p, "EDID", "version %u.%u%s", e->version, e->revision, e->checksum_ok ? "" : " (bad csum)");
+    }
+
+    page_blank(p);
     page_add(p, STYLE_HEAD, "SMBIOS");
     const struct smbios_info *s = &f->smbios;
     if (!s->present) {

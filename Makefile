@@ -102,13 +102,15 @@ TESTS += test_smbios
 deps_test_smbios := src/info/smbios.c src/info/physmap.c src/lib/fmt.c
 TESTS += test_page test_tabs
 deps_test_page := src/ui/page.c src/lib/fmt.c
-deps_test_tabs := src/info/smbios.c src/info/physmap.c src/ui/tab_about.c src/ui/tab_pci.c src/info/pci.c src/ui/tab_cpu.c src/ui/tab_mem.c src/ui/tab_fw.c src/ui/page.c src/info/mem.c src/lib/fmt.c
+deps_test_tabs := src/info/edid.c src/info/smbios.c src/info/physmap.c src/ui/tab_about.c src/ui/tab_pci.c src/info/pci.c src/ui/tab_cpu.c src/ui/tab_mem.c src/ui/tab_fw.c src/ui/page.c src/info/mem.c src/lib/fmt.c
 TESTS += test_pci
 deps_test_pci := src/info/pci.c
 TESTS += test_braille
 deps_test_braille := src/gfx/braille.c
 TESTS += test_physmap
 deps_test_physmap := src/info/physmap.c
+TESTS += test_edid
+deps_test_edid := src/info/edid.c src/lib/fmt.c
 # (add "TESTS += test_x" and "deps_test_x := ..." lines above this comment)
 
 define TEST_RULE
@@ -131,6 +133,7 @@ SMOKE_EXPECT += "acpi: rev" "smbios: QEMU"
 SMOKE_EXPECT += "power: PM1a_CNT"
 SMOKE_EXPECT += "pci: "
 SMOKE_EXPECT += "memory devices"
+SMOKE_EXPECT += "edid: "
 # (add "SMOKE_EXPECT += \"pattern\"" lines above this comment)
 
 smoke:

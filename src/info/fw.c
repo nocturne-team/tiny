@@ -55,6 +55,10 @@ void fw_probe(struct fw_info *f) {
         f->fb_height = bootinfo.fb->height;
         f->fb_pitch = bootinfo.fb->pitch;
         f->fb_bpp = bootinfo.fb->bpp;
+        if (bootinfo.fb->edid && bootinfo.fb->edid_size) {
+            f->have_edid = true;
+            edid_parse(bootinfo.fb->edid, bootinfo.fb->edid_size, &f->edid);
+        }
     }
     const struct gfx_layout *l = gfx_get_layout();
     f->ui_cols = l->cols;
@@ -86,4 +90,8 @@ void fw_probe(struct fw_info *f) {
     else
         klog("smbios: not provided");
     klog("smbios: %zu memory devices", f->smbios.dimm_count);
+    if (f->edid.valid)
+        klog("edid: %s %s %ux%u", f->edid.manufacturer, f->edid.name, f->edid.pref_width, f->edid.pref_height);
+    else
+        klog("edid: %s", f->have_edid ? "invalid" : "not provided");
 }

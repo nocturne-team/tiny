@@ -113,7 +113,7 @@ static void test_fw(void) {  // Review Focus #5
     tab_fw_build(&p, &f);
     CHECK_STR(p.title, "Firmware");
     CHECK_STR(find_line(&p, "Firmware") + 16, "unknown");
-    CHECK_EQ(count_style(&p, STYLE_WARN), 2);  // SMBIOS and ACPI both missing
+    CHECK_EQ(count_style(&p, STYLE_WARN), 3);  // EDID, SMBIOS and ACPI all missing
 
     f.firmware_type = LIMINE_FIRMWARE_TYPE_EFI64;
     f.acpi.present = true;
@@ -168,7 +168,39 @@ static void test_about(void) {
     CHECK(!p.truncated);
 }
 
+static void test_fw_monitor(void) {
+    static struct fw_info f;
+    memset(&f, 0, sizeof f);
+    f.firmware_type = -1;
+    tab_fw_build(&p, &f);
+    CHECK_STR(find_line(&p, "Monitor"), "Monitor");
+    CHECK_STR(find_line(&p, "No EDID"), "No EDID from the firmware");
+
+    f.have_edid = true;  // bytes present but not an EDID
+    tab_fw_build(&p, &f);
+    CHECK_STR(find_line(&p, "EDID present"), "EDID present but invalid");
+
+    f.edid = (struct edid_info){ .valid = true, .checksum_ok = true, .manufacturer = "DEL",
+        .product = 0xA0C2, .name = "DELL U2720Q", .week = 12, .year = 2020, .version = 1,
+        .revision = 4, .width_cm = 53, .height_cm = 30, .diagonal_tenths = 240,
+        .pref_width = 1920, .pref_height = 1080, .pref_centihz = 5994 };
+    tab_fw_build(&p, &f);
+    CHECK_STR(find_line(&p, "Name") + 16, "DELL U2720Q");
+    CHECK_STR(find_line(&p, "Manufacturer") + 16, "DEL, product 0xa0c2");
+    CHECK_STR(find_line(&p, "Manufactured") + 16, "week 12 of 2020");
+    CHECK_STR(find_line(&p, "Size") + 16, "53 x 30 cm (24.0\")");
+    CHECK_STR(find_line(&p, "Preferred mode") + 16, "1920x1080 @ 59.94 Hz");
+    CHECK_STR(find_line(&p, "EDID") + 16, "version 1.4");
+
+    f.edid.model_year = true;
+    f.edid.checksum_ok = false;
+    tab_fw_build(&p, &f);
+    CHECK_STR(find_line(&p, "Manufactured") + 16, "model year 2020");
+    CHECK_STR(find_line(&p, "EDID") + 16, "version 1.4 (bad csum)");
+}
+
 int main(void) {
+    test_fw_monitor();
     test_about();
     test_pci();
     test_cpu();

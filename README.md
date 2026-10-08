@@ -2,7 +2,8 @@
 
 A tiny bare-metal x86_64 "operating system" that boots, probes the machine, and
 shows what it found in a keyboard-driven text UI. It covers the CPU (CPUID,
-caches, features, TSC), the memory map, PCI devices, and the firmware (BIOS/UEFI, SMBIOS,
+caches, features, TSC), the memory map and installed RAM, PCI devices, the
+monitor (EDID), and the firmware (BIOS/UEFI, SMBIOS,
 ACPI tables, RTC). It boots from one ISO on BIOS and UEFI machines via
 [Limine](https://github.com/Limine-Bootloader/Limine).
 

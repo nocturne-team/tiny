@@ -10,9 +10,9 @@ void tab_about_build(struct page *p) {
         page_add(p, STYLE_ART, "%c", row + 1);
     page_blank(p);
 
-    page_add(p, STYLE_HEAD, "tiny v%s - a tiny bare-metal x86_64 system info tool", TINY_VERSION);
+    page_add(p, STYLE_HEAD, "tiny v%s, a tiny bare-metal x86_64 system info tool", TINY_VERSION);
     page_add(p, STYLE_TEXT, "Boots straight from Limine on BIOS or UEFI with no OS underneath, and");
-    page_add(p, STYLE_TEXT, "shows what it finds. Written in freestanding C.");
+    page_add(p, STYLE_TEXT, "shows what it finds.");
     page_blank(p);
     page_add(p, STYLE_HEAD, "Credits");
     page_kv(p, "Bootloader", "Limine - github.com/Limine-Bootloader/Limine");
