@@ -171,6 +171,9 @@ smoke:
 	$(KEYTEST) --uefi -device usb-kbd,bus=xhci.0 -- 'wait:keyboard 0627:' key:f3 'wait:ui: tab 3'
 	$(KEYTEST) -device usb-kbd,bus=xhci.0 -device usb-kbd,bus=xhci.0 -device usb-tablet,bus=xhci.0 -- \
 		'wait:keyboard 0627:' 'wait:keyboard 0627:' 'wait:ignored' key:f3 'wait:ui: tab 3' 'count:1:ignored'
+	$(KEYTEST) -- add:usb-kbd,bus=xhci.0,id=k1 'wait:keyboard 0627:' 'wait:ui: keyboard found' \
+		del:k1 'wait:disconnected' 'wait:ui: keyboard missing' \
+		add:usb-kbd,bus=xhci.0,id=k2 'wait:keyboard 0627:' 'wait:ui: keyboard found' key:f3 'wait:ui: tab 3'
 
 clean:
 	rm -rf build

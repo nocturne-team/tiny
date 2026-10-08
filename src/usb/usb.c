@@ -255,6 +255,9 @@ bool usb_poll(struct key_event *out) {
     for (size_t i = 0; i < hc_count; i++) {
         struct usb_hc *h = &hcs[i];
         xhci_poll(&h->x);
+        uint8_t port;
+        while (!h->x.dead && xhci_port_take_change(&h->x, &port))
+            service_root(h, port, true);
         if (h->x.dead && !h->dead_handled) {
             h->dead_handled = true;
             for (unsigned p = 1; p <= h->x.max_ports; p++) {
