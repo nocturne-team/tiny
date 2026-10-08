@@ -113,6 +113,8 @@ TESTS += test_edid
 deps_test_edid := src/info/edid.c src/lib/fmt.c
 TESTS += test_pool
 deps_test_pool := src/mm/pool.c
+TESTS += test_hid_kbd
+deps_test_hid_kbd := src/usb/hid_kbd.c
 # (add "TESTS += test_x" and "deps_test_x := ..." lines above this comment)
 
 define TEST_RULE

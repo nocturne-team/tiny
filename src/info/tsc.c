@@ -61,3 +61,17 @@ enum tsc_source tsc_source(void) { return source; }
 uint64_t tsc_uptime_seconds(void) {
     return hz ? (rdtsc() - boot_tsc) / hz : 0;
 }
+uint64_t tsc_ms(void) {
+    return hz >= 1000 ? (rdtsc() - boot_tsc) / (hz / 1000) : 0;
+}
+
+void tsc_delay_us(uint64_t us) {
+    if (hz < 1000000) {
+        while (us--)
+            io_wait();
+        return;
+    }
+    uint64_t end = rdtsc() + us * (hz / 1000000);
+    while (rdtsc() < end)
+        cpu_pause();
+}

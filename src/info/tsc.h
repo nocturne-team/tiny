@@ -9,3 +9,6 @@ void tsc_init(void);
 uint64_t tsc_hz(void);                // 0 when unknown
 enum tsc_source tsc_source(void);
 uint64_t tsc_uptime_seconds(void);    // since tsc_init; 0 when frequency unknown
+uint64_t tsc_ms(void);                // milliseconds since tsc_init; 0 when frequency unknown
+// Busy-waits about `us` microseconds: TSC when known, else ~1 µs port-0x80 writes.
+void tsc_delay_us(uint64_t us);
