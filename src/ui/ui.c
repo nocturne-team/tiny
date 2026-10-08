@@ -9,12 +9,12 @@
 #include "lib/string.h"
 #include "power.h"
 
-#define A_FRAME   ATTR(C_LCYAN, C_BLUE)
-#define A_TITLE   ATTR(C_WHITE, C_BLUE)
-#define A_TEXT    ATTR(C_LGRAY, C_BLUE)
-#define A_HEAD    ATTR(C_YELLOW, C_BLUE)
-#define A_DIM     ATTR(C_CYAN, C_BLUE)
-#define A_WARN    ATTR(C_LRED, C_BLUE)
+#define A_FRAME   ATTR(C_LCYAN, C_BLACK)
+#define A_TITLE   ATTR(C_WHITE, C_BLACK)
+#define A_TEXT    ATTR(C_LGRAY, C_BLACK)
+#define A_HEAD    ATTR(C_YELLOW, C_BLACK)
+#define A_DIM     ATTR(C_CYAN, C_BLACK)
+#define A_WARN    ATTR(C_LRED, C_BLACK)
 #define A_TAB_SEL ATTR(C_BLACK, C_CYAN)
 #define A_ALERT   ATTR(C_YELLOW, C_RED)
 
