@@ -130,6 +130,9 @@ smoke:
 	tests/smoke.sh build/smoke/tiny.iso bios ok q35,acpi=off "acpi: rev 0"
 	$(MAKE) --no-print-directory BUILD=build/smoke-noacpi KDEFS="-DSMOKE -DSMOKE_NO_ACPI" iso
 	tests/smoke.sh build/smoke-noacpi/tiny.iso bios ok q35 "acpi: not provided"
+	$(MAKE) --no-print-directory BUILD=build/smoke-off KDEFS="-DSMOKE -DSMOKE_SHUTDOWN" iso
+	tests/smoke.sh build/smoke-off/tiny.iso bios shutdown
+	tests/smoke.sh build/smoke-off/tiny.iso uefi shutdown
 
 clean:
 	rm -rf build

@@ -9,6 +9,7 @@
 #include "input/input.h"
 #include "lib/fmt.h"
 #include "lib/serial.h"
+#include "power.h"
 
 static void demo_screen(void) {
     int cols = gfx_cols(), rows = gfx_rows();
@@ -65,6 +66,10 @@ void kmain(void) {
         klog("mem: no memory map from bootloader");
     }
     fw_probe(&fw);
+    power_init(&fw.acpi);
+#ifdef SMOKE_SHUTDOWN
+    power_shutdown();
+#endif
     demo_screen();
     klog("PROBE OK");
     klog("UI READY");
