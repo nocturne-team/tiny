@@ -21,6 +21,9 @@ struct usb_config_info {
     bool has_kbd;             // first boot keyboard interface (3/1/1), alt setting 0
     uint8_t kbd_iface;
     struct usb_ep_info kbd_ep;
+    bool has_mouse;           // first boot mouse interface (3/1/2), alt setting 0
+    uint8_t mouse_iface;
+    struct usb_ep_info mouse_ep;
     bool has_hub;             // first hub interface (class 9), alt setting 0
     struct usb_ep_info hub_ep;
 };

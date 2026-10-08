@@ -34,6 +34,13 @@ static const uint8_t hub_cfg[] = {
     7, 5, 0x81, 3, 1, 0, 12,
 };
 
+// A mouse-only device.
+static const uint8_t mouse_cfg[] = {
+    9, 2, 34, 0, 1, 1, 0, 0xA0, 50,
+    9, 4, 0, 0, 1, 3, 1, 2, 0,
+    HID_DESC,
+    7, 5, 0x81, 3, 4, 0, 10,
+};
 int main(void) {
     struct usb_config_info ci;
 
@@ -51,6 +58,17 @@ int main(void) {
     CHECK_EQ(ci.kbd_iface, 1);
     CHECK_EQ(ci.kbd_ep.addr, 0x82);
     CHECK_EQ(ci.kbd_ep.interval, 8);
+    CHECK(ci.has_mouse);  // the receiver's mouse is on interface 0
+    CHECK_EQ(ci.mouse_iface, 0);
+    CHECK_EQ(ci.mouse_ep.addr, 0x81);
+    CHECK_EQ(ci.mouse_ep.mps, 4);
+
+    CHECK(usb_desc_config(mouse_cfg, sizeof mouse_cfg, &ci));
+    CHECK(ci.has_mouse);
+    CHECK(!ci.has_kbd);
+    CHECK_EQ(ci.mouse_ep.interval, 10);
+    CHECK(usb_desc_config(kbd_cfg, sizeof kbd_cfg, &ci));
+    CHECK(!ci.has_mouse);
 
     CHECK(usb_desc_config(out_first_cfg, sizeof out_first_cfg, &ci));
     CHECK(ci.has_kbd);

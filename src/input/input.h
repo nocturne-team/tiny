@@ -1,5 +1,6 @@
 #pragma once
 #include <stdbool.h>
+#include <stdint.h>
 
 enum key {
     KEY_NONE, KEY_UP, KEY_DOWN, KEY_LEFT, KEY_RIGHT, KEY_PGUP, KEY_PGDN,
@@ -10,6 +11,12 @@ struct key_event {
     enum key key;
     char ch;      // lowercase ASCII for KEY_CHAR, otherwise 0
     bool repeat;  // typematic repeat of a key that is still held down
+};
+
+struct pointer_event {
+    int16_t dx, dy;   // relative motion, +x right, +y down
+    int8_t wheel;     // + = away from the user (scroll up)
+    uint8_t buttons;  // bit 0 left, 1 right, 2 middle
 };
 
 // Input front: merges the PS/2 and USB backends.

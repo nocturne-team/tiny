@@ -54,6 +54,10 @@ bool usb_desc_config(const uint8_t *b, size_t len, struct usb_config_info *out) 
                     out->has_kbd = true;
                     out->kbd_iface = iface;
                     out->kbd_ep = ep;
+                } else if (cls == 3 && sub == 1 && proto == 2 && !out->has_mouse) {
+                    out->has_mouse = true;
+                    out->mouse_iface = iface;
+                    out->mouse_ep = ep;
                 } else if (cls == 9 && !out->has_hub) {
                     out->has_hub = true;
                     out->hub_ep = ep;

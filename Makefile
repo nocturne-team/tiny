@@ -128,6 +128,9 @@ TESTS += test_xhci_calc
 deps_test_xhci_calc := src/usb/xhci_calc.c src/lib/fmt.c
 TESTS += test_cmdline
 deps_test_cmdline := src/lib/cmdline.c
+TESTS += test_hid_mouse test_pointer
+deps_test_hid_mouse := src/usb/hid_mouse.c
+deps_test_pointer := src/ui/pointer.c src/lib/fmt.c
 # (add "TESTS += test_x" and "deps_test_x := ..." lines above this comment)
 
 define TEST_RULE
