@@ -238,6 +238,7 @@ static void handle_pointer(const struct pointer_event *e) {
             cur = (size_t)t;
             tab_changed();
             draw_tabs();
+            draw_clock();
             draw_content();
         }
     }

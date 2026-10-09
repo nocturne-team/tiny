@@ -33,7 +33,8 @@ struct disk_info {
 };
 
 struct storage_list {
-    bool probed;         // false: no DMA memory, nothing was looked at
+    bool probed;         // false: nothing was looked at (no DMA memory, or disabled)
+    bool disabled;       // "nostorage" on the command line
     size_t count;
     struct disk_info disks[STORAGE_MAX_DISKS];
     size_t nvme_ctrls, ahci_ctrls;

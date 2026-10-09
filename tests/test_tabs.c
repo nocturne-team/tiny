@@ -255,6 +255,10 @@ static void test_storage(void) {
     tab_storage_build(&p, &s);
     CHECK_STR(p.title, "Storage");
     CHECK_STR(find_line(&p, "Storage"), "Storage not probed (no DMA memory)");
+    s.disabled = true;
+    tab_storage_build(&p, &s);
+    CHECK_STR(find_line(&p, "Storage"), "Storage probing turned off (nostorage on the command line)");
+    s.disabled = false;
 
     s.probed = true;
     tab_storage_build(&p, &s);
@@ -335,7 +339,7 @@ static void test_storage(void) {
     CHECK_STR(find_line(&p, "SATA "), "SATA  QEMU HARDDISK");
     CHECK_STR(find_line(&p, "Interface       SATA"), "Interface       SATA (AHCI 00:1f.2, port 1), 7200 rpm");
     CHECK_STR(find_line(&p, "Capacity        10"), "Capacity        10.7 GB (512-byte sectors)");
-    CHECK_STR(find_line(&p, "Health          w"), "Health          warning (8 reallocated, 0 pending sectors)");
+    CHECK_STR(find_line(&p, "Health          w"), "Health          warning (8 reallocated, 0 pending, 0 uncorrectable sectors)");
     CHECK_STR(find_line(&p, "Reallocated"), "Reallocated     8 sectors");
     CHECK_STR(find_line(&p, "Power-on        10"), "Power-on        10 hours");
     CHECK_EQ(count_prefix(&p, "Uncorrectable"), 0);  // not reported by the drive
@@ -359,6 +363,11 @@ static void test_storage(void) {
     CHECK_STR(find_line(&p, "Reallocated"), "Reallocated     1 sector");
     CHECK_STR(find_line(&p, "Power-on"), "Power-on        1 hour, 1 power cycle");
     CHECK_EQ(count_prefix(&p, "Power-on        1 hours"), 0);
+
+    a->realloc = 0;
+    a->uncorrectable = 3;
+    tab_storage_build(&p, &s);
+    CHECK_STR(find_line(&p, "Health          w"), "Health          warning (0 reallocated, 0 pending, 3 uncorrectable sectors)");
 
     n->crit_warning = 0x04;
     tab_storage_build(&p, &s);

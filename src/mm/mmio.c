@@ -22,10 +22,17 @@ volatile uint8_t *pci_map_bar(const struct pci_device *pd, unsigned bar, uint64_
     pci_config_write(b, dv, f, reg, 0xFFFFFFFF);
     uint64_t size = pci_bar_size(pci_config_read(b, dv, f, reg));
     pci_config_write(b, dv, f, reg, lo);
-    pci_config_write(b, dv, f, 0x04, cmd | 0x6u);  // memory space + bus master
     uint64_t base = pci_bar_base(lo, hi);
-    if (!base || size < 0x400)
+    if (!base || size < 0x400) {
+        pci_config_write(b, dv, f, 0x04, cmd);
         return NULL;
+    }
+    pci_config_write(b, dv, f, 0x04, cmd | 0x2u);  // memory space
     *len = size < max ? size : max;
     return vmm_map_mmio(base, *len);
+}
+
+void pci_bus_master(const struct pci_device *pd) {
+    uint32_t cmd = pci_config_read(pd->bus, pd->dev, pd->fn, 0x04) & 0xFFFF;
+    pci_config_write(pd->bus, pd->dev, pd->fn, 0x04, cmd | 0x4u);
 }

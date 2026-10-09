@@ -96,16 +96,20 @@ static bool admin(struct nvme *n, uint8_t op, uint32_t nsid, uint32_t dw10, cons
 
 static bool disable(struct nvme *n, unsigned timeout_ms) {
     uint32_t cc = mmio_rd(n->regs, REG_CC);
-    if (cc & CC_EN)
+    if (cc & CC_EN) {
+        // Clearing EN before RDY is set is undefined: let a pending enable finish first.
+        mmio_wait(n->regs, REG_CSTS, CSTS_RDY, CSTS_RDY, timeout_ms);
         mmio_wr(n->regs, REG_CC, cc & ~CC_EN);
+    }
     return mmio_wait(n->regs, REG_CSTS, CSTS_RDY, 0, timeout_ms);
 }
 
-static bool start(struct nvme *n, unsigned timeout_ms) {
+static bool start(struct nvme *n, const struct pci_device *pd, unsigned timeout_ms) {
     if (!disable(n, timeout_ms)) {
         klog("nvme: %s: reset timeout", n->name);
         return false;
     }
+    pci_bus_master(pd);  // only now: a controller left running could DMA into our memory
     uint64_t sq = page_alloc(), cq = page_alloc();
     n->buf_phys = page_alloc();
     if (!sq || !cq || !n->buf_phys) {
@@ -124,6 +128,7 @@ static bool start(struct nvme *n, unsigned timeout_ms) {
         uint32_t st = mmio_rd(n->regs, REG_CSTS);
         if (st & CSTS_CFS) {
             klog("nvme: %s: controller fatal status", n->name);
+            mmio_wr(n->regs, REG_CC, 0);
             return false;
         }
         if (st & CSTS_RDY)
@@ -131,6 +136,7 @@ static bool start(struct nvme *n, unsigned timeout_ms) {
         tsc_delay_us(10);
     }
     klog("nvme: %s: enable timeout", n->name);
+    mmio_wr(n->regs, REG_CC, 0);
     return false;
 }
 
@@ -160,7 +166,7 @@ bool nvme_probe(const struct pci_device *pd, struct disk_info *d) {
         klog("nvme: %s: no NVM command set or 4 KiB pages, skipped", n.name);
         return false;
     }
-    if (!start(&n, timeout_ms))
+    if (!start(&n, pd, timeout_ms))
         return false;
 
     disk_init(d, DISK_NVME);

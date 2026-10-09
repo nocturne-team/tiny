@@ -69,7 +69,7 @@ static void test_ata_identify_lba48_4k(void) {
     memset(w, 0, sizeof w);
     w[60] = 0xFFFF;  // LBA28 field saturated
     w[61] = 0x0FFF;
-    w[83] = 1 << 10; // LBA48
+    w[83] = 0x4000 | 1 << 10; // valid (bits 15:14 = 01), LBA48
     w[86] = 1 << 10;
     w[100] = 0x0000; // 0x0000_0001_0000_0000 sectors
     w[101] = 0x0000;
@@ -95,6 +95,10 @@ static void test_ata_identify_lba48_4k(void) {
     w[217] = 0xFFFF; // reserved value
     ata_parse_identify(w, &d);
     CHECK_EQ(d.rpm, 0);
+
+    w[83] = 0xFFFF;  // garbage word 83 (validity bits wrong): LBA48 words ignored
+    ata_parse_identify(w, &d);
+    CHECK_EQ(d.bytes, 0x0FFFFFFFull * 512);
 }
 
 static void smart_attr(int slot, uint8_t id, uint64_t raw) {
@@ -221,6 +225,14 @@ static void test_nvme_smart(void) {
 
     buf[1] = buf[2] = 0;  // temperature not reported
     disk_init(&d, DISK_NVME);
+    nvme_parse_smart(buf, &d);
+    CHECK(!d.has_temp);
+    buf[1] = 0xEE;        // 65262 K: garbage
+    buf[2] = 0xFE;
+    nvme_parse_smart(buf, &d);
+    CHECK(!d.has_temp);
+    buf[1] = 100;         // 100 K: garbage too
+    buf[2] = 0;
     nvme_parse_smart(buf, &d);
     CHECK(!d.has_temp);
 }

@@ -92,7 +92,11 @@ void kmain(void) {
         klog("usb: disabled by command line");
     else if (dma)
         usb_init(&pci);
-    if (dma)
+    if (cmdline_has(bootinfo.cmdline, "nostorage")) {
+        storage.disabled = true;
+        klog("storage: disabled by command line");
+    }
+    else if (dma)
         storage_probe(&pci, &storage);
     input_init();
     fw_probe(&fw);

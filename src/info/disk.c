@@ -50,7 +50,7 @@ void ata_parse_identify(const uint16_t w[256], struct disk_info *d) {
             d->sector = words * 2;
     }
     uint64_t sectors = w[60] | (uint64_t)w[61] << 16;
-    if (w[83] & (1 << 10)) {
+    if ((w[83] & 0xC000) == 0x4000 && (w[83] & (1 << 10))) {  // word valid, LBA48
         uint64_t lba48 = w[100] | (uint64_t)w[101] << 16 | (uint64_t)w[102] << 32 |
                          (uint64_t)w[103] << 48;
         if (lba48)
@@ -130,7 +130,7 @@ static uint64_t count128(const uint8_t *p) {
 void nvme_parse_smart(const uint8_t log[512], struct disk_info *d) {
     d->crit_warning = log[0];
     uint16_t kelvin = (uint16_t)le(&log[1], 2);
-    d->has_temp = kelvin > 0;
+    d->has_temp = kelvin >= 200 && kelvin <= 400;  // 0 = not reported; others are garbage
     d->temp_c = (int)kelvin - 273;
     d->spare = log[3];
     d->spare_thresh = log[4];

@@ -49,7 +49,8 @@ enum {
     SMART_READ_DATA = 0xD0, SMART_RETURN_STATUS = 0xDA,
 };
 
-#define CMD_TIMEOUT_MS 1000
+#define CMD_TIMEOUT_MS 10000   // SMART on a drive in standby may spin it up first
+#define SPINUP_MS 10000        // a drive still spinning up keeps BSY set
 #define MAX_PORTS 32
 
 // Per-port DMA page: command list (1 KiB), received FISes (256 B), one command table.
@@ -63,6 +64,7 @@ struct port {
     const char *name;
     unsigned no;
     uint64_t page, data;  // physical
+    bool dead;            // a restart after an error failed: send nothing more
 };
 
 static bool stop(struct port *p) {
@@ -77,7 +79,9 @@ static bool stop(struct port *p) {
     return mmio_wait(p->r, P_CMD, CMD_FR, 0, 500);
 }
 
-static bool start(struct port *p) {
+// Points the port at our pages and turns on FIS receive; waits up to `ms` for BSY/DRQ
+// to clear (a drive that is still spinning up). The port is stopped before.
+static bool receive(struct port *p, unsigned ms) {
     if (!stop(p))
         return false;
     mmio_wr64(p->r, P_CLB, p->page + OFF_CLB);
@@ -86,7 +90,11 @@ static bool start(struct port *p) {
     mmio_wr(p->r, P_SERR, 0xFFFFFFFF);
     mmio_wr(p->r, P_IS, 0xFFFFFFFF);
     mmio_wr(p->r, P_CMD, mmio_rd(p->r, P_CMD) | CMD_FRE);
-    if (!mmio_wait(p->r, P_TFD, TFD_BSY | TFD_DRQ, 0, CMD_TIMEOUT_MS))
+    return mmio_wait(p->r, P_TFD, TFD_BSY | TFD_DRQ, 0, ms);
+}
+
+static bool start(struct port *p, unsigned ms) {
+    if (!receive(p, ms))
         return false;
     mmio_wr(p->r, P_CMD, mmio_rd(p->r, P_CMD) | CMD_ST);
     return true;
@@ -95,6 +103,8 @@ static bool start(struct port *p) {
 // Runs one ATA command in slot 0. `len` bytes go to the data page (0: no data).
 static bool command(struct port *p, uint8_t cmd, uint8_t feature, uint8_t lba1, uint8_t lba2,
                     uint32_t len, const char *what) {
+    if (p->dead)
+        return false;
     uint8_t *page = phys_virt(p->page);
     uint32_t *hdr = (uint32_t *)(page + OFF_CLB);
     uint8_t *ct = page + OFF_CT;
@@ -135,7 +145,10 @@ static bool command(struct port *p, uint8_t cmd, uint8_t feature, uint8_t lba1, 
     bool timeout = !(mmio_rd(p->r, P_IS) & IS_TFES) && (mmio_rd(p->r, P_CI) & 1);
     klog("ahci: %s port %u: %s %s (tfd 0x%x)", p->name, p->no, what, timeout ? "timeout" : "error",
          mmio_rd(p->r, P_TFD));
-    start(p);  // restarting the port clears the error and any stuck command
+    if (!start(p, CMD_TIMEOUT_MS)) {  // restarting clears the error and any stuck command
+        klog("ahci: %s port %u: restart failed, giving up on it", p->name, p->no);
+        p->dead = true;
+    }
     return false;
 }
 
@@ -156,15 +169,17 @@ static void probe_ata(struct port *p, struct disk_info *d) {
         klog("ahci: %s port %u: SMART data checksum mismatch", p->name, p->no);
 }
 
-// BIOS/OS handoff (AHCI 1.2) when the HBA supports it.
+// BIOS/OS handoff (AHCI 1.3.1 section 10.6.3) when the HBA supports it: request
+// ownership, give the BIOS 25 ms to say it is busy (BB), and if so up to 2 s more.
 static void handoff(volatile uint8_t *hba, const char *name) {
     if (!(mmio_rd(hba, HBA_CAP2) & CAP2_BOH))
         return;
     mmio_wr(hba, HBA_BOHC, mmio_rd(hba, HBA_BOHC) | BOHC_OOS);
-    if (!mmio_wait(hba, HBA_BOHC, BOHC_BOS, 0, 25))
-        klog("ahci: %s: bios handoff timeout", name);
-    else if (mmio_rd(hba, HBA_BOHC) & BOHC_BB)
-        mmio_wait(hba, HBA_BOHC, BOHC_BB, 0, 2000);
+    if (mmio_wait(hba, HBA_BOHC, BOHC_BOS, 0, 25))
+        return;
+    if ((mmio_rd(hba, HBA_BOHC) & BOHC_BB) && mmio_wait(hba, HBA_BOHC, BOHC_BOS, 0, 2000))
+        return;
+    klog("ahci: %s: bios handoff timeout, continuing", name);
 }
 
 size_t ahci_probe(const struct pci_device *pd, struct disk_info *out, size_t max) {
@@ -176,11 +191,22 @@ size_t ahci_probe(const struct pci_device *pd, struct disk_info *out, size_t max
         klog("ahci: %s: ABAR not usable", name);
         return 0;
     }
-    handoff(hba, name);
     mmio_wr(hba, HBA_GHC, mmio_rd(hba, HBA_GHC) | GHC_AE);
+    handoff(hba, name);
     uint32_t pi = mmio_rd(hba, HBA_PI), vs = mmio_rd(hba, HBA_VS);
     klog("ahci: %s v%u.%u, %u ports (implemented 0x%x)", name, vs >> 16, (vs >> 8) & 0xFF,
          (mmio_rd(hba, HBA_CAP) & 0x1F) + 1, pi);
+
+    // Quiesce every port the firmware may have left running before allowing DMA. A port
+    // that won't stop could still write into memory we now own: leave the HBA alone.
+    for (unsigned i = 0; i < MAX_PORTS; i++) {
+        struct port p = { .r = hba + PORT(i) };
+        if ((pi & (1u << i)) && PORT(i) + 0x80 <= len && !stop(&p)) {
+            klog("ahci: %s port %u: won't stop, controller skipped", name, i);
+            return 0;
+        }
+    }
+    pci_bus_master(pd);
 
     size_t n = 0;
     for (unsigned i = 0; i < MAX_PORTS && n < max; i++) {
@@ -190,18 +216,25 @@ size_t ahci_probe(const struct pci_device *pd, struct disk_info *out, size_t max
         uint32_t ssts = mmio_rd(p.r, P_SSTS);
         if ((ssts & 0xF) != 3)  // no device, or no PHY communication
             continue;
-        uint32_t sig = mmio_rd(p.r, P_SIG);
-        if (sig != SIG_ATA && sig != SIG_ATAPI) {
-            klog("ahci: %s port %u: unknown device (signature 0x%08x)", name, i, sig);
-            continue;
-        }
         p.page = page_alloc();
         p.data = page_alloc();
         if (!p.page || !p.data) {
             klog("ahci: %s: out of DMA pages", name);
             break;
         }
-        if (!start(&p)) {
+        // The signature is only valid once the drive's first D2H FIS arrived (BSY clear).
+        if (!receive(&p, SPINUP_MS)) {
+            klog("ahci: %s port %u: device stays busy, skipped", name, i);
+            stop(&p);
+            continue;
+        }
+        uint32_t sig = mmio_rd(p.r, P_SIG);
+        if (sig != SIG_ATA && sig != SIG_ATAPI) {
+            klog("ahci: %s port %u: unknown device (signature 0x%08x)", name, i, sig);
+            stop(&p);
+            continue;
+        }
+        if (!start(&p, CMD_TIMEOUT_MS)) {
             klog("ahci: %s port %u: port start timeout", name, i);
             continue;
         }

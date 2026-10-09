@@ -14,6 +14,10 @@ void storage_probe(const struct pci_list *pci, struct storage_list *out) {
         if (pd->class_code != 0x01)
             continue;
         size_t room = STORAGE_MAX_DISKS - out->count;
+        const char *kind = pd->subclass == 0x08 && pd->prog_if == 0x02 ? "NVMe"
+                         : pd->subclass == 0x06 && pd->prog_if == 0x01 ? "AHCI" : NULL;
+        if (kind && room)
+            klog("storage: probing %s %02x:%02x.%x", kind, pd->bus, pd->dev, pd->fn);
         if (pd->subclass == 0x08 && pd->prog_if == 0x02) {
             if (out->nvme_ctrls++ >= STORAGE_MAX_CTRLS || !room)
                 continue;

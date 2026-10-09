@@ -166,7 +166,7 @@ SMOKE_EXPECT += "edid: "
 SMOKE_EXPECT += "pages: "
 SMOKE_EXPECT += "xhci: .* running" "usb: 1 xHCI controller, 0 keyboards"
 SMOKE_EXPECT += "msr: invalid MSR" "sensors: "
-SMOKE_EXPECT += "ahci: 00:1f.2" "storage: ATAPI QEMU DVD-ROM" "storage: 1 drive"
+SMOKE_EXPECT += "storage: probing AHCI 00:1f.2" "ahci: 00:1f.2" "storage: ATAPI QEMU DVD-ROM" "storage: 1 drive"
 # (add "SMOKE_EXPECT += \"pattern\"" lines above this comment)
 KEYTEST := tools/qemu-keytest.py build/smoke-keys/tiny.iso
 DISKS := -drive if=none,id=n0,format=raw,file=build/disks/nvme.img -device nvme,drive=n0,serial=NVME0001 \
@@ -203,6 +203,9 @@ smoke: build/disks/nvme.img build/disks/sata.img
 	$(MAKE) --no-print-directory BUILD=build/smoke-nousb LIMINE_CONF=tests/limine-nousb.conf KDEFS=-DSMOKE iso
 	QEMU_EXTRA="-device qemu-xhci,id=xhci -device usb-kbd,bus=xhci.0" \
 		tests/smoke.sh build/smoke-nousb/tiny.iso bios ok q35 "usb: disabled by command line" "storage: 1 drive"
+	$(MAKE) --no-print-directory BUILD=build/smoke-safe LIMINE_CONF=tests/limine-safe.conf KDEFS=-DSMOKE iso
+	QEMU_EXTRA="$(DISKS)" tests/smoke.sh build/smoke-safe/tiny.iso bios ok q35 "usb: disabled by command line" \
+		"storage: disabled by command line"
 	$(MAKE) --no-print-directory BUILD=build/smoke-keys KDEFS="-DSMOKE -DSMOKE_KEYS" iso
 	$(KEYTEST) -device usb-kbd,bus=xhci.0 -- 'wait:keyboard 0627:' key:f3 'wait:ui: tab 3'
 	$(KEYTEST) --uefi -device usb-kbd,bus=xhci.0 -- 'wait:keyboard 0627:' key:f3 'wait:ui: tab 3'

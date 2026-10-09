@@ -21,6 +21,8 @@ static inline void mmio_wr64(volatile uint8_t *base, uint32_t off, uint64_t v) {
 // Polls every 10 µs until (reg & mask) == want, for up to `ms` milliseconds.
 bool mmio_wait(volatile uint8_t *base, uint32_t off, uint32_t mask, uint32_t want, unsigned ms);
 
-// Sizes memory BAR `bar` (0-5), enables memory decoding and bus mastering, and maps
-// up to `max` bytes of it uncached. NULL for an unassigned, I/O or tiny BAR.
+// Sizes memory BAR `bar` (0-5), enables memory decoding and maps up to `max` bytes of
+// it uncached. NULL (command register untouched) for an unassigned, I/O or tiny BAR.
+// Bus mastering stays as it was: turn it on with pci_bus_master once the device is quiet.
 volatile uint8_t *pci_map_bar(const struct pci_device *pd, unsigned bar, uint64_t max, uint64_t *len);
+void pci_bus_master(const struct pci_device *pd);

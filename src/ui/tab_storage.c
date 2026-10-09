@@ -36,9 +36,10 @@ static void health_line(struct page *p, const struct disk_info *d) {
     else if (h == HEALTH_FAILING)
         ksnprintf(why, sizeof why, " (SMART threshold exceeded)");
     else if (h == HEALTH_WARNING)
-        ksnprintf(why, sizeof why, " (%llu reallocated, %llu pending sectors)",
+        ksnprintf(why, sizeof why, " (%llu reallocated, %llu pending, %llu uncorrectable sectors)",
                   (unsigned long long)(d->realloc == DISK_NONE ? 0 : d->realloc),
-                  (unsigned long long)(d->pending == DISK_NONE ? 0 : d->pending));
+                  (unsigned long long)(d->pending == DISK_NONE ? 0 : d->pending),
+                  (unsigned long long)(d->uncorrectable == DISK_NONE ? 0 : d->uncorrectable));
     page_kv(p, "Health", "%s%s", name, why);
     if (h == HEALTH_WARNING || h == HEALTH_WORN || h == HEALTH_FAILING)
         p->lines[p->count - 1].style = STYLE_WARN;
@@ -118,6 +119,10 @@ static void disk(struct page *p, const struct disk_info *d) {
 void tab_storage_build(struct page *p, const struct storage_list *s) {
     page_clear(p);
     p->title = "Storage";
+    if (s->disabled) {
+        page_add(p, STYLE_WARN, "Storage probing turned off (nostorage on the command line)");
+        return;
+    }
     if (!s->probed) {
         page_add(p, STYLE_WARN, "Storage not probed (no DMA memory)");
         return;
