@@ -26,7 +26,9 @@ static struct fw_info fw;
 static struct pci_list pci;
 static struct storage_list storage;
 static struct sensors sensors;
-static struct page pages[8];
+static struct page pages[9];
+static struct usb_summary usb_sum;
+static uint32_t usb_gen;
 static uint64_t log_seq;
 
 static uint64_t sensors_ms;
@@ -39,6 +41,17 @@ static bool sensors_update(struct page *p) {
     sensors_ms = now;
     sensors_sample(&sensors);
     tab_sensors_build(p, &sensors);
+    return true;
+}
+
+// Rebuilds when a USB device came, went or stopped working.
+static bool usb_update(struct page *p) {
+    uint32_t g = usb_generation();
+    if (g == usb_gen)
+        return false;
+    usb_gen = g;
+    usb_summarize(&usb_sum);
+    tab_usb_build(p, &usb_sum);
     return true;
 }
 
@@ -88,10 +101,14 @@ void kmain(void) {
     pci_scan(pci_config_read, &pci);
     klog("pci: %zu devices%s", pci.count, pci.truncated ? " (truncated)" : "");
     bool dma = pages_init();
-    if (cmdline_has(bootinfo.cmdline, "nousb"))
+    if (cmdline_has(bootinfo.cmdline, "nousb")) {
+        usb_sum.disabled = true;
         klog("usb: disabled by command line");
-    else if (dma)
+    } else if (dma) {
         usb_init(&pci);
+    } else {
+        usb_sum.no_dma = true;
+    }
     if (cmdline_has(bootinfo.cmdline, "nostorage")) {
         storage.disabled = true;
         klog("storage: disabled by command line");
@@ -106,18 +123,26 @@ void kmain(void) {
     tab_cpu_build(&pages[0], &cpu, width);
     tab_mem_build(&pages[1], bootinfo.memmap, &fw.smbios);
     tab_pci_build(&pages[2], &pci);
-    tab_fw_build(&pages[3], &fw);
-    tab_storage_build(&pages[4], &storage);
+    if (usb_sum.disabled || usb_sum.no_dma) {
+        tab_usb_build(&pages[3], &usb_sum);
+    } else {
+        usb_gen = usb_generation();
+        usb_summarize(&usb_sum);
+        tab_usb_build(&pages[3], &usb_sum);
+        pages[3].update = usb_update;
+    }
+    tab_fw_build(&pages[4], &fw);
+    tab_storage_build(&pages[5], &storage);
     sensors_init(&sensors, &cpu);
     sensors_sample(&sensors);
     sensors_ms = tsc_ms();
-    tab_sensors_build(&pages[5], &sensors);
-    pages[5].update = sensors_update;
-    pages[6].update = log_update;
-    pages[6].follow = true;
-    log_update(&pages[6]);
-    tab_about_build(&pages[7]);
+    tab_sensors_build(&pages[6], &sensors);
+    pages[6].update = sensors_update;
+    pages[7].update = log_update;
+    pages[7].follow = true;
+    log_update(&pages[7]);
+    tab_about_build(&pages[8]);
     klog("PROBE OK");
 
-    ui_run(pages, 8);
+    ui_run(pages, 9);
 }

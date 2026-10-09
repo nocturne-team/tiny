@@ -7,6 +7,8 @@
 #include "lib/logbuf.h"
 #include "ui/about_art.h"
 #include "ui/tabs.h"
+#include "usb/usb_summary.h"
+#include "usb/xhci_calc.h"
 
 static struct page p;
 
@@ -434,7 +436,74 @@ static void test_sensors(void) {
     CHECK_EQ(count_prefix(&p, "TjMax"), 0);
 }
 
+static void test_usb(void) {
+    static struct usb_summary s;
+    memset(&s, 0, sizeof s);
+    s.disabled = true;
+    tab_usb_build(&p, &s);
+    CHECK_STR(p.title, "USB");
+    CHECK_STR(find_line(&p, "USB turned"), "USB turned off (nousb on the command line)");
+    CHECK_EQ(p.lines[0].style, STYLE_WARN);
+
+    s.disabled = false;
+    s.no_dma = true;
+    tab_usb_build(&p, &s);
+    CHECK_STR(find_line(&p, "USB not"), "USB not started (no DMA memory)");
+    s.no_dma = false;
+    tab_usb_build(&p, &s);
+    CHECK_STR(find_line(&p, "No xHCI"), "No xHCI controllers found (older USB controllers are not supported)");
+
+    s.hc_count = 2;
+    s.hc[0] = (struct usb_hc_summary){ "00:14.0", 0x8086, 0x0120, 16, 10, 6, USB_HC_RUNNING };
+    s.hc[1] = (struct usb_hc_summary){ "03:00.0", 0x1b21, 0, 0, 0, 0, USB_HC_FAILED };
+    s.dev_count = 5;
+    s.dev[0] = (struct usb_dev_summary){ .hc = 0, .port = "1", .speed = USB_SPEED_HS, .has_id = true,
+        .vid = 0x05e3, .pid = 0x0610, .cls = 9, .hub_ports = 4, .state = USB_DEV_HUB,
+        .manufacturer = "GenesysLogic", .product = "USB2.1 Hub" };
+    s.dev[1] = (struct usb_dev_summary){ .hc = 0, .port = "1.2", .speed = USB_SPEED_FS,
+        .has_id = true, .vid = 0x046d, .pid = 0xc52b, .cls = 3, .sub = 1, .proto = 2,
+        .state = USB_DEV_KBD_MOUSE, .manufacturer = "Logitech", .product = "Logitech USB Receiver" };
+    s.dev[2] = (struct usb_dev_summary){ .hc = 0, .port = "13", .speed = USB_SPEED_SS, .has_id = true,
+        .vid = 0x0781, .pid = 0x5581, .cls = 8, .sub = 6, .proto = 0x50, .state = USB_DEV_UNUSED,
+        .product = "Ultra" };
+    s.dev[3] = (struct usb_dev_summary){ .hc = 0, .port = "5", .speed = USB_SPEED_HS, .state = USB_DEV_NO_DESC };
+    s.dev[4] = (struct usb_dev_summary){ .hc = 0, .port = "14", .speed = USB_SPEED_SS, .has_id = true,
+        .vid = 0x05e3, .pid = 0x0626, .cls = 9, .state = USB_DEV_HUB_SS };
+    tab_usb_build(&p, &s);
+    CHECK_STR(find_line(&p, "Controllers"), "Controllers (2)");
+    CHECK_STR(find_line(&p, "00:14.0"), "00:14.0  xHCI 1.20  Intel  16 ports (10 USB 2, 6 USB 3)");
+    CHECK_STR(find_line(&p, "03:00.0"), "03:00.0  xHCI       ASMedia  not started (see the Log tab)");
+    CHECK_STR(find_line(&p, "Devices on 00:14.0"), "Devices on 00:14.0 (5)");
+    CHECK_STR(find_line(&p, "Port"), "Port    Speed   ID         Class               Status             Product");
+    CHECK_STR(find_line(&p, "1   "), "1       high    05e3:0610  Hub, 4 ports        in use             GenesysLogic USB2.1 Hub");
+    CHECK_STR(find_line(&p, "1.2 "), "1.2     full    046d:c52b  HID                 keyboard+mouse     Logitech USB Receiver");
+    CHECK_STR(find_line(&p, "13 "), "13      super   0781:5581  Mass storage        not used           Ultra");
+    CHECK_STR(find_line(&p, "5  "), "5       high    -          -                   no descriptor");
+    CHECK_STR(find_line(&p, "14 "), "14      super   05e3:0626  Hub                 USB 3 half of hub");
+    CHECK_STR(find_line(&p, "Devices behind"), "Devices behind a hub's USB 3 half, or behind a second hub, are not listed.");
+    CHECK_STR(find_line(&p, "Devices on 03:00.0"), "");  // a controller that never started has no list
+    int warns = count_style(&p, STYLE_WARN);
+    CHECK_EQ(warns, 2);  // the failed controller and the device without a descriptor
+
+    s.hc[0].state = USB_HC_STOPPED;
+    s.hc[0].usb2_ports = s.hc[0].usb3_ports = 0;
+    s.dev_count = 0;
+    tab_usb_build(&p, &s);
+    CHECK_STR(find_line(&p, "00:14.0"), "00:14.0  xHCI 1.20  Intel  16 ports, stopped (controller error)");
+    CHECK_STR(find_line(&p, "Nothing"), "Nothing attached");
+    CHECK_STR(find_line(&p, "Devices behind"), "");
+
+    s.dev_count = 1;
+    s.dev[0] = (struct usb_dev_summary){ .hc = 0, .port = "2", .speed = 9, .has_id = true, .vid = 1,
+        .pid = 2, .cls = 0x42, .state = USB_DEV_STOPPED, .manufacturer = "Acme" };
+    s.dev_truncated = true;
+    tab_usb_build(&p, &s);
+    CHECK_STR(find_line(&p, "2  "), "2       ?       0001:0002  Class 42            stopped (errors)   Acme");
+    CHECK_STR(find_line(&p, "More than"), "More than 32 USB devices; list truncated");
+}
+
 int main(void) {
+    test_usb();
     test_sensors();
     test_storage();
     test_log();

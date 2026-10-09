@@ -348,7 +348,7 @@ bool xhci_init(struct xhci *x, const struct pci_device *pd) {
     x->max_slots = slots < XHCI_MAX_SLOTS ? slots : XHCI_MAX_SLOTS;
     x->csz = (hcc1 & 4) ? 64 : 32;
     unsigned sp = ((hcs2 >> 21) & 0x1F) << 5 | hcs2 >> 27;
-    uint16_t ver = (uint16_t)(cap0 >> 16);
+    uint16_t ver = x->version = (uint16_t)(cap0 >> 16);
     klog("xhci: %s v%x.%02x, %u ports, %u slots, ctx %u", x->name, ver >> 8, ver & 0xFF,
          x->max_ports, slots, x->csz);
 

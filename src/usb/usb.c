@@ -9,7 +9,7 @@
 #include "usb/xhci_calc.h"
 
 #define USB_MAX_HC 4
-#define USB_MAX_DEVS 16
+#define USB_MAX_DEVS 32
 #define HUB_MAX_PORTS 15
 
 // Standard requests (USB 2.0 ch. 9) and HID class requests.
@@ -22,7 +22,8 @@
 #define HID_SET_IDLE 0x0A
 #define HID_SET_PROTOCOL 0x0B
 
-enum dev_kind { DEV_OTHER, DEV_HID, DEV_HUB };
+// DEV_IGNORED: a record for the USB tab only; its slot is closed.
+enum dev_kind { DEV_OTHER, DEV_HID, DEV_HUB, DEV_IGNORED };
 
 struct usb_dev {
     bool used;
@@ -38,6 +39,13 @@ struct usb_dev {
     uint8_t nports;                       // hub
     struct usb_dev *child[HUB_MAX_PORTS + 1];
     uint16_t skip;                        // hub ports to leave alone until unplugged
+    // What the USB tab shows. `state` is only meaningful for DEV_IGNORED.
+    enum usb_dev_state state;
+    uint8_t speed;
+    bool has_id;
+    struct usb_device_info di;
+    uint8_t cls, sub, proto;              // device class, or the first interface's
+    char manufacturer[32], product[48];
 };
 
 struct usb_hc {
@@ -45,10 +53,13 @@ struct usb_hc {
     struct usb_dev *port_dev[256];
     uint64_t skip[4];                     // root ports to leave alone until unplugged
     bool dead_handled;
+    bool up;                              // xhci_init succeeded
+    uint16_t vendor;
 };
 
 static struct usb_hc hcs[USB_MAX_HC];
-static size_t hc_count, kbd_count;
+static size_t hc_count, hc_up, kbd_count;
+static uint32_t generation;  // bumped whenever the device tree changes
 static struct usb_dev devs[USB_MAX_DEVS];
 
 static void mdelay(unsigned ms) {
@@ -67,6 +78,7 @@ static struct usb_dev *dev_new(void) {
 }
 
 static void dev_free(struct usb_dev *u) {
+    generation++;
     if (u->is_kbd)
         kbd_count--;
     xhci_dev_close(&u->xd);
@@ -234,7 +246,36 @@ static bool hub_setup(struct usb_dev *u, const struct usb_config_info *ci) {
     return true;
 }
 
-// Addresses and identifies the device at `a`. Returns NULL (slot closed) unless it is in use.
+// One string descriptor into out[cap]; out stays "" when the device has none.
+static void get_string(struct xhci_dev *d, uint8_t index, uint16_t lang, char *out, size_t cap) {
+    out[0] = 0;
+    if (!index)
+        return;
+    memset(d->buf, 0, 256);
+    if (xhci_ok(xhci_control(d, 0x80, REQ_GET_DESCRIPTOR, (uint16_t)(0x0300 | index), lang, 255)))
+        usb_desc_string(d->buf, 255, out, cap);
+}
+
+static void read_strings(struct usb_dev *u) {
+    struct xhci_dev *d = &u->xd;
+    if (!u->di.i_manufacturer && !u->di.i_product)
+        return;
+    memset(d->buf, 0, 256);
+    uint8_t cc = xhci_control(d, 0x80, REQ_GET_DESCRIPTOR, 0x0300, 0, 255);
+    if (!cc)
+        return;  // timed out: don't pay that again for each string
+    uint16_t lang = xhci_ok(cc) ? usb_desc_langid(d->buf, 255) : 0;
+    if (!lang)
+        lang = 0x0409;  // English (US), what most devices have
+    get_string(d, u->di.i_manufacturer, lang, u->manufacturer, sizeof u->manufacturer);
+    get_string(d, u->di.i_product, lang, u->product, sizeof u->product);
+    if (u->manufacturer[0] || u->product[0])
+        klog("usb: port %s: \"%s\" \"%s\"", u->name, u->manufacturer, u->product);
+}
+
+// Addresses and identifies the device at `a`. A device tiny does not use, or could
+// not set up, stays as a DEV_IGNORED record (slot closed) until it is unplugged.
+// NULL only when the device table is full.
 static struct usb_dev *dev_attach(struct xhci *x, const struct xhci_dev_addr *a, struct usb_dev *parent) {
     char name[16];
     usb_port_name(name, sizeof name, a->root_port, a->route);
@@ -243,20 +284,29 @@ static struct usb_dev *dev_attach(struct xhci *x, const struct xhci_dev_addr *a,
         klog("usb: port %s: device table full, ignored", name);
         return NULL;
     }
+    generation++;
     memcpy(u->name, name, sizeof name);
     u->parent = parent;
+    u->speed = a->speed;
     const char *sp = usb_speed_name(a->speed);
-    struct usb_device_info di;
+    struct usb_device_info *di = &u->di;
     struct usb_config_info ci;
 
     if (!xhci_dev_open(x, &u->xd, a)) {
         klog("usb: port %s: addressing failed", name);
-        goto fail;
+        u->state = USB_DEV_NO_ADDRESS;
+        goto ignore;
     }
-    if (!xhci_ok(get_desc(&u->xd, 0x0100, 18)) || !usb_desc_device(u->xd.buf, 18, &di)) {
+    if (!xhci_ok(get_desc(&u->xd, 0x0100, 18)) || !usb_desc_device(u->xd.buf, 18, di)) {
         klog("usb: port %s: no device descriptor", name);
-        goto fail;
+        u->state = USB_DEV_NO_DESC;
+        goto ignore;
     }
+    u->has_id = true;
+    u->cls = di->dev_class;
+    u->sub = di->sub_class;
+    u->proto = di->protocol;
+    read_strings(u);
     uint16_t total = 0;
     if (xhci_ok(get_desc(&u->xd, 0x0200, 9)))
         total = (uint16_t)(u->xd.buf[2] | u->xd.buf[3] << 8);
@@ -264,38 +314,50 @@ static struct usb_dev *dev_attach(struct xhci *x, const struct xhci_dev_addr *a,
         total = USB_CONFIG_MAX;
     if (total < 9 || !xhci_ok(get_desc(&u->xd, 0x0200, total)) ||
         !usb_desc_config(u->xd.buf, total, &ci)) {
-        klog("usb: port %s %s device %04x:%04x, bad configuration descriptor", name, sp, di.vid, di.pid);
-        goto fail;
+        klog("usb: port %s %s device %04x:%04x, bad configuration descriptor", name, sp, di->vid, di->pid);
+        u->state = USB_DEV_BAD_CONFIG;
+        goto ignore;
     }
-    if (di.dev_class == 9) {
+    if ((u->cls == 0x00 || u->cls == 0xEF) && ci.has_iface) {
+        u->cls = ci.iface_class;
+        u->sub = ci.iface_sub;
+        u->proto = ci.iface_proto;
+    }
+    if (di->dev_class == 9) {
         if (parent) {
             klog("usb: port %s %s hub behind a hub, ignored", name, sp);
-            goto fail;
+            u->state = USB_DEV_HUB_NESTED;
+            goto ignore;
         }
         if (a->speed >= USB_SPEED_SS) {  // its USB 2 twin on a USB 2 port carries the keyboards
             klog("usb: port %s %s hub, ignored", name, sp);
-            goto fail;
+            u->state = USB_DEV_HUB_SS;
+            goto ignore;
         }
         if (!hub_setup(u, &ci)) {
-            klog("usb: port %s %s hub %04x:%04x, setup failed", name, sp, di.vid, di.pid);
-            goto fail;
+            klog("usb: port %s %s hub %04x:%04x, setup failed", name, sp, di->vid, di->pid);
+            u->state = USB_DEV_SETUP_FAILED;
+            goto ignore;
         }
         return u;
     }
     if (ci.has_kbd || ci.has_mouse) {
         if (!hid_setup(u, &ci)) {
-            klog("usb: port %s %s HID %04x:%04x, setup failed", name, sp, di.vid, di.pid);
-            goto fail;
+            klog("usb: port %s %s HID %04x:%04x, setup failed", name, sp, di->vid, di->pid);
+            u->state = USB_DEV_SETUP_FAILED;
+            goto ignore;
         }
         klog("usb: port %s %s %s %04x:%04x", name, sp,
              u->is_kbd && u->is_mouse ? "keyboard+mouse" : u->is_kbd ? "keyboard" : "mouse",
-             di.vid, di.pid);
+             di->vid, di->pid);
         return u;
     }
-    klog("usb: port %s %s device %04x:%04x class %02x, ignored", name, sp, di.vid, di.pid, di.dev_class);
-fail:
-    dev_free(u);
-    return NULL;
+    klog("usb: port %s %s device %04x:%04x class %02x, ignored", name, sp, di->vid, di->pid, u->cls);
+    u->state = USB_DEV_UNUSED;
+ignore:
+    xhci_dev_close(&u->xd);
+    u->kind = DEV_IGNORED;
+    return u;
 }
 
 // Brings a root port in line with what is plugged into it. Idempotent: called at
@@ -343,15 +405,17 @@ void usb_init(const struct pci_list *pci) {
                  pd->bus, pd->dev, pd->fn);
             continue;
         }
-        if (xhci_init(&hcs[hc_count].x, pd))
-            hc_count++;
+        struct usb_hc *h = &hcs[hc_count++];  // kept even when it fails, for the USB tab
+        h->vendor = pd->vendor;
+        h->up = xhci_init(&h->x, pd);
+        hc_up += h->up;
     }
-    if (hc_count)
+    if (hc_up)
         mdelay(100);  // let freshly powered ports see their devices
     for (size_t i = 0; i < hc_count; i++)
-        for (unsigned p = 1; p <= hcs[i].x.max_ports; p++)
+        for (unsigned p = 1; hcs[i].up && p <= hcs[i].x.max_ports; p++)
             service_root(&hcs[i], (uint8_t)p, false);
-    klog("usb: %zu xHCI controller%s, %zu keyboard%s", hc_count, hc_count == 1 ? "" : "s",
+    klog("usb: %zu xHCI controller%s, %zu keyboard%s", hc_up, hc_up == 1 ? "" : "s",
          kbd_count, kbd_count == 1 ? "" : "s");
 }
 
@@ -430,6 +494,7 @@ static void handle_report(struct usb_dev *u, int i) {
         if (u->errors[i] > 8) {
             // Give up on this endpoint only: the other half of a combo receiver keeps working.
             u->stopped[i] = true;
+            generation++;
             klog("usb: port %s: too many transfer errors (cc %u), stopped", u->name, e->cc);
             if (u->is_kbd && i == u->kbd_ep) {
                 u->is_kbd = false;  // the footer must not claim a keyboard that no longer works
@@ -475,6 +540,8 @@ bool usb_poll(struct key_event *out) {
         return true;
     for (size_t i = 0; i < hc_count; i++) {
         struct usb_hc *h = &hcs[i];
+        if (!h->up)
+            continue;
         xhci_poll(&h->x);
         uint8_t port;
         while (!h->x.dead && xhci_port_take_change(&h->x, &port))
@@ -504,4 +571,68 @@ bool usb_poll(struct key_event *out) {
         }
     }
     return pop(out);
+}
+
+uint32_t usb_generation(void) {
+    return generation;
+}
+
+static void summarize_dev(struct usb_summary *s, uint8_t hc, const struct usb_dev *u) {
+    if (s->dev_count == USB_SUM_DEVS) {
+        s->dev_truncated = true;
+        return;
+    }
+    struct usb_dev_summary *d = &s->dev[s->dev_count++];
+    memset(d, 0, sizeof *d);
+    d->hc = hc;
+    memcpy(d->port, u->name, sizeof d->port);
+    d->speed = u->speed;
+    d->has_id = u->has_id;
+    d->vid = u->di.vid;
+    d->pid = u->di.pid;
+    d->cls = u->cls;
+    d->sub = u->sub;
+    d->proto = u->proto;
+    memcpy(d->manufacturer, u->manufacturer, sizeof d->manufacturer);
+    memcpy(d->product, u->product, sizeof d->product);
+    switch (u->kind) {
+    case DEV_HUB:
+        d->state = USB_DEV_HUB;
+        d->hub_ports = u->nports;
+        break;
+    case DEV_HID:
+        d->state = u->is_kbd && u->is_mouse ? USB_DEV_KBD_MOUSE : u->is_kbd ? USB_DEV_KEYBOARD
+                 : u->is_mouse ? USB_DEV_MOUSE : USB_DEV_STOPPED;
+        break;
+    default:
+        d->state = u->state;
+        break;
+    }
+}
+
+void usb_summarize(struct usb_summary *s) {
+    memset(s, 0, sizeof *s);
+    for (size_t i = 0; i < hc_count && i < USB_SUM_HCS; i++) {
+        const struct usb_hc *h = &hcs[i];
+        struct usb_hc_summary *c = &s->hc[s->hc_count++];
+        memcpy(c->name, h->x.name, sizeof c->name);
+        c->vendor = h->vendor;
+        c->version = h->x.version;
+        c->ports = h->x.max_ports;
+        c->state = !h->up ? USB_HC_FAILED : h->x.dead ? USB_HC_STOPPED : USB_HC_RUNNING;
+        for (unsigned p = 1; h->up && p <= h->x.max_ports; p++) {
+            c->usb2_ports += h->x.port_major[p] == 2;
+            c->usb3_ports += h->x.port_major[p] == 3;
+        }
+        // Tree order: each root port, then the ports of a hub on it.
+        for (unsigned p = 1; h->up && p <= h->x.max_ports; p++) {
+            const struct usb_dev *u = h->port_dev[p];
+            if (!u)
+                continue;
+            summarize_dev(s, (uint8_t)i, u);
+            for (unsigned k = 1; k <= HUB_MAX_PORTS; k++)
+                if (u->child[k])
+                    summarize_dev(s, (uint8_t)i, u->child[k]);
+        }
+    }
 }

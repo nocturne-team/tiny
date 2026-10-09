@@ -21,3 +21,5 @@ struct sensors;
 void tab_sensors_build(struct page *p, const struct sensors *s);
 void tab_storage_build(struct page *p, const struct storage_list *s);
 void tab_log_build(struct page *p, const struct logbuf *lb);
+struct usb_summary;
+void tab_usb_build(struct page *p, const struct usb_summary *s);

@@ -2,7 +2,7 @@
 
 A tiny bare-metal x86_64 "operating system" that boots, probes the machine, and
 shows what it found in a keyboard-driven text UI. It covers the CPU (CPUID,
-caches, features, TSC), the memory map and installed RAM, PCI devices, drives
+caches, features, TSC), the memory map and installed RAM, PCI and USB devices, drives
 (NVMe and SATA, with SMART health), the monitor (EDID), and the firmware (BIOS/UEFI, SMBIOS,
 ACPI tables, RTC). It boots from one ISO on BIOS and UEFI machines via
 [Limine](https://github.com/Limine-Bootloader/Limine).
@@ -11,10 +11,17 @@ ACPI tables, RTC). It boots from one ISO on BIOS and UEFI machines via
 
 | Key | Action |
 |---|---|
-| ← / → or F1–F8 | switch tab (CPU, Memory, PCI, Firmware, Storage, Sensors, Log, About) |
+| ← / → or F1–F9 | switch tab (CPU, Memory, PCI, USB, Firmware, Storage, Sensors, Log, About) |
 | ↑ / ↓, PgUp / PgDn, Home / End | scroll |
 | R, then R again | reboot |
 | S, then S again | shut down (ACPI S5) |
+
+The **USB** tab lists each xHCI controller (version, USB 2 and USB 3 port
+counts) and every device that answered on its ports: port, speed, vid:pid,
+class, the product name the device reports, and whether tiny uses it (keyboard,
+mouse, hub) or not. Devices that failed to come up are listed too, in red. The
+list follows plugging and unplugging. Devices behind a hub's USB 3 half or a
+second level of hubs are not seen.
 
 The **Storage** tab lists NVMe drives and SATA drives on AHCI controllers:
 model, serial, firmware, capacity, and health from the drive's own SMART data

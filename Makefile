@@ -85,12 +85,13 @@ run-uefi: $(ISO) $(BUILD)/ovmf-vars.fd
 
 shots: $(ISO)
 	tools/qemu-shot.py $(ISO) build/shots shot:cpu right shot:memory pgdn shot:memory-pgdn \
-		f3 shot:pci f4 shot:firmware end shot:firmware-end f5 shot:storage f6 wait:3 shot:sensors f7 shot:log f8 shot:about pgdn shot:about-pgdn s shot:confirm-shutdown esc shot:cancelled
-	tools/qemu-shot.py $(ISO) build/shots --uefi f3 shot:uefi-pci f4 shot:uefi-firmware
+		f3 shot:pci f4 shot:usb f5 shot:firmware end shot:firmware-end f6 shot:storage f7 wait:3 shot:sensors f8 shot:log f9 shot:about pgdn shot:about-pgdn s shot:confirm-shutdown esc shot:cancelled
+	tools/qemu-shot.py $(ISO) build/shots --uefi f3 shot:uefi-pci f5 shot:uefi-firmware
 	tools/qemu-shot.py $(ISO) build/shots --usb-kbd f3 shot:usb-pci
-	tools/qemu-shot.py $(ISO) build/shots --disks f5 shot:storage-disks pgdn shot:storage-disks-pgdn
-	tools/qemu-shot.py $(ISO) build/shots --disks --uefi f5 shot:uefi-storage
-	tools/qemu-shot.py $(ISO) build/shots --usb-kbd --usb-mouse f8 mouse:-5000:-5000 mouse:400:200 wait:0.5 shot:mouse-cursor
+	tools/qemu-shot.py $(ISO) build/shots --usb-kbd --usb-mouse f4 shot:usb-devices
+	tools/qemu-shot.py $(ISO) build/shots --disks f6 shot:storage-disks pgdn shot:storage-disks-pgdn
+	tools/qemu-shot.py $(ISO) build/shots --disks --uefi f6 shot:uefi-storage
+	tools/qemu-shot.py $(ISO) build/shots --usb-kbd --usb-mouse f9 mouse:-5000:-5000 mouse:400:200 wait:0.5 shot:mouse-cursor
 
 # --- host unit tests ----------------------------------------------------------
 TESTS :=
@@ -112,7 +113,7 @@ TESTS += test_smbios
 deps_test_smbios := src/info/smbios.c src/info/physmap.c src/lib/fmt.c
 TESTS += test_page test_tabs
 deps_test_page := src/ui/page.c src/lib/fmt.c
-deps_test_tabs := src/ui/tab_sensors.c src/info/sensors_calc.c src/ui/tab_storage.c src/info/disk.c src/ui/tab_log.c src/lib/logbuf.c src/info/edid.c src/info/smbios.c src/info/physmap.c src/ui/tab_about.c src/ui/tab_pci.c src/info/pci.c src/ui/tab_cpu.c src/ui/tab_mem.c src/ui/tab_fw.c src/ui/page.c src/info/mem.c src/lib/fmt.c
+deps_test_tabs := src/ui/tab_usb.c src/usb/usb_desc.c src/usb/xhci_calc.c src/ui/tab_sensors.c src/info/sensors_calc.c src/ui/tab_storage.c src/info/disk.c src/ui/tab_log.c src/lib/logbuf.c src/info/edid.c src/info/smbios.c src/info/physmap.c src/ui/tab_about.c src/ui/tab_pci.c src/info/pci.c src/ui/tab_cpu.c src/ui/tab_mem.c src/ui/tab_fw.c src/ui/page.c src/info/mem.c src/lib/fmt.c
 TESTS += test_pci
 deps_test_pci := src/info/pci.c
 TESTS += test_braille
@@ -172,11 +173,11 @@ KEYTEST := tools/qemu-keytest.py build/smoke-keys/tiny.iso
 DISKS := -drive if=none,id=n0,format=raw,file=build/disks/nvme.img -device nvme,drive=n0,serial=NVME0001 \
 	-drive if=none,id=s0,format=raw,file=build/disks/sata.img -device ide-hd,drive=s0,bus=ide.0
 
-build/disks/nvme.img build/disks/sata.img:
+build/disks/nvme.img build/disks/sata.img build/disks/usb.img:
 	@mkdir -p $(dir $@)
-	truncate -s $(if $(findstring nvme,$@),1G,10G) $@
+	truncate -s $(if $(findstring nvme,$@),1G,$(if $(findstring usb,$@),64M,10G)) $@
 
-smoke: build/disks/nvme.img build/disks/sata.img
+smoke: build/disks/nvme.img build/disks/sata.img build/disks/usb.img
 	$(MAKE) --no-print-directory BUILD=build/smoke KDEFS=-DSMOKE iso
 	tests/smoke.sh build/smoke/tiny.iso bios ok q35 $(SMOKE_EXPECT)
 	tests/smoke.sh build/smoke/tiny.iso uefi ok q35 $(SMOKE_EXPECT)
@@ -184,7 +185,10 @@ smoke: build/disks/nvme.img build/disks/sata.img
 	tests/smoke.sh build/smoke-panic/tiny.iso bios panic
 	tests/smoke.sh build/smoke/tiny.iso bios ok q35,i8042=off "ps2: no controller"
 	QEMU_EXTRA="-device qemu-xhci,id=xhci -device usb-kbd,bus=xhci.0 -device usb-tablet,bus=xhci.0" \
-		tests/smoke.sh build/smoke/tiny.iso bios ok q35,i8042=off "keyboard 0627:" "class 00, ignored" "controller, 1 keyboard"
+		tests/smoke.sh build/smoke/tiny.iso bios ok q35,i8042=off "keyboard 0627:" "class 03, ignored" "controller, 1 keyboard" \
+		'"QEMU" "QEMU USB Keyboard"'
+	QEMU_EXTRA="-device qemu-xhci,id=xhci -drive if=none,id=u0,format=raw,file=build/disks/usb.img \
+		-device usb-storage,bus=xhci.0,drive=u0" tests/smoke.sh build/smoke/tiny.iso bios ok q35 "class 08, ignored" "QEMU USB HARDDRIVE"
 	tests/smoke.sh build/smoke/tiny.iso bios ok q35,acpi=off "acpi: rev 0"
 	@if [ -r /dev/kvm ] && [ -w /dev/kvm ]; then \
 		QEMU_EXTRA="-accel kvm -cpu host -device qemu-xhci,id=xhci" tests/smoke.sh build/smoke/tiny.iso bios ok q35 \
@@ -210,6 +214,7 @@ smoke: build/disks/nvme.img build/disks/sata.img
 	$(KEYTEST) -device usb-kbd,bus=xhci.0 -- 'wait:keyboard 0627:' key:f3 'wait:ui: tab 3'
 	$(KEYTEST) --uefi -device usb-kbd,bus=xhci.0 -- 'wait:keyboard 0627:' key:f3 'wait:ui: tab 3'
 	$(KEYTEST) -device usb-kbd,bus=xhci.0 -- 'wait:keyboard 0627:' key:f8 'wait:ui: tab 8'
+	$(KEYTEST) -device usb-kbd,bus=xhci.0 -- 'wait:keyboard 0627:' key:f9 'wait:ui: tab 9'
 	$(KEYTEST) -device usb-kbd,bus=xhci.0 -device usb-kbd,bus=xhci.0 -device usb-tablet,bus=xhci.0 -- \
 		'wait:keyboard 0627:' 'wait:keyboard 0627:' 'wait:ignored' key:f3 'wait:ui: tab 3' 'count:1:ignored'
 	QEMU_EXTRA="-device qemu-xhci,id=xhci -device usb-mouse,bus=xhci.0" \

@@ -81,6 +81,7 @@ struct xhci {
     volatile uint8_t *cap, *op, *rt, *db;
     uint64_t mmio_len;
     uint32_t xecp;             // byte offset of the extended capabilities, 0 if none
+    uint16_t version;          // HCIVERSION, BCD
     uint8_t max_ports, max_slots, csz;
     bool dead;                 // HSE/HCE seen or the controller stopped answering
     volatile uint64_t *dcbaa;

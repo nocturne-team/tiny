@@ -200,6 +200,7 @@ static void handle(const struct key_event *k) {
     case KEY_F6:
     case KEY_F7:
     case KEY_F8:
+    case KEY_F9:
         if ((size_t)(k->key - KEY_F1) < page_count)
             cur = (size_t)(k->key - KEY_F1);
         break;

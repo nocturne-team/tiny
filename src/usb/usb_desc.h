@@ -6,8 +6,9 @@
 #define USB_CONFIG_MAX 1024  // bytes of configuration descriptor we read
 
 struct usb_device_info {
-    uint8_t dev_class, protocol, mps0;
+    uint8_t dev_class, sub_class, protocol, mps0;
     uint16_t vid, pid;
+    uint8_t i_manufacturer, i_product;  // string descriptor indexes, 0 if none
 };
 
 struct usb_ep_info {
@@ -26,6 +27,8 @@ struct usb_config_info {
     struct usb_ep_info mouse_ep;
     bool has_hub;             // first hub interface (class 9), alt setting 0
     struct usb_ep_info hub_ep;
+    bool has_iface;           // the first interface (alt setting 0), for its class
+    uint8_t iface_class, iface_sub, iface_proto;
 };
 
 struct usb_hub_desc {
@@ -40,3 +43,11 @@ bool usb_desc_device(const uint8_t *b, size_t len, struct usb_device_info *out);
 // non-zero packet size count. A truncated tail is ignored.
 bool usb_desc_config(const uint8_t *b, size_t len, struct usb_config_info *out);
 bool usb_desc_hub(const uint8_t *b, size_t len, struct usb_hub_desc *out);
+// String descriptor to printable ASCII in out[cap] (anything else becomes '?', control
+// characters are dropped, surrounding spaces trimmed). False when nothing printable is left.
+bool usb_desc_string(const uint8_t *b, size_t len, char *out, size_t cap);
+// First LANGID of string descriptor 0, or 0 when there is none.
+uint16_t usb_desc_langid(const uint8_t *b, size_t len);
+// Base class name ("Mass storage"), NULL for 0x00 and unknown classes. For a device
+// class of 0x00 or 0xEF (composite), pass the first interface's class instead.
+const char *usb_class_name(uint8_t cls, uint8_t sub, uint8_t proto);
