@@ -155,6 +155,8 @@ TESTS += test_screen
 deps_test_screen := src/ui/screen_test.c
 TESTS += test_pci_db
 deps_test_pci_db := src/info/pci_db.c src/info/pci_ids.c
+TESTS += test_shutdown
+deps_test_shutdown := src/ui/shutdown_seq.c
 # (add "TESTS += test_x" and "deps_test_x := ..." lines above this comment)
 
 define TEST_RULE
@@ -224,7 +226,7 @@ smoke: build/disks/nvme.img build/disks/sata.img build/disks/usb.img
 		tests/smoke.sh build/smoke-nousb/tiny.iso bios ok q35 "usb: disabled by command line" "storage: 1 drive"
 	$(MAKE) --no-print-directory BUILD=build/smoke-safe LIMINE_CONF=tests/limine-safe.conf KDEFS=-DSMOKE iso
 	QEMU_EXTRA="$(DISKS)" tests/smoke.sh build/smoke-safe/tiny.iso bios ok q35 "usb: disabled by command line" \
-		"storage: disabled by command line"
+		"storage: disabled by command line" "farewell disabled by command line"
 	$(MAKE) --no-print-directory BUILD=build/smoke-keys KDEFS="-DSMOKE -DSMOKE_KEYS" iso
 	$(KEYTEST) -device usb-kbd,bus=xhci.0 -- 'wait:keyboard 0627:' key:f3 'wait:ui: tab 3'
 	$(KEYTEST) --uefi -device usb-kbd,bus=xhci.0 -- 'wait:keyboard 0627:' key:f3 'wait:ui: tab 3'
@@ -250,6 +252,13 @@ smoke: build/disks/nvme.img build/disks/sata.img build/disks/usb.img
 		click:right 'wait:pattern 1 Test card' key:q 'wait:screen: done' key:f1 'wait:ui: tab 1\b'
 	$(KEYTEST) -device usb-kbd,bus=xhci.0 -device usb-kbd,bus=xhci.0 -device usb-tablet,bus=xhci.0 -- \
 		'wait:keyboard 0627:' 'wait:keyboard 0627:' 'wait:ignored' key:f3 'wait:ui: tab 3' 'count:1:ignored'
+	$(KEYTEST) --ps2 --exit=0 -- key:s key:s 'wait:power: ACPI S5' 'count:34:shutdown: ' \
+		'count:1:EXTREME DAMAGE SUSTAINED[\s\S]*RUNNING DIAGNOSTIC[\s\S]*ARM CORE MODULE #1[\s\S]*NO VOCAL INTERFACE[\s\S]*(DON.T WANT TO DIE[\s\S]*){3}power: shutting down'
+	$(KEYTEST) -device usb-kbd,bus=xhci.0 --exit=0 -- 'wait:keyboard 0627:' key:r key:r 'wait:power: rebooting' \
+		'count:34:shutdown: ' 'count:0:PANIC'
+	$(MAKE) --no-print-directory BUILD=build/smoke-keys-safe LIMINE_CONF=tests/limine-safe.conf KDEFS="-DSMOKE -DSMOKE_KEYS" iso
+	tools/qemu-keytest.py build/smoke-keys-safe/tiny.iso --ps2 --exit=0 -- 'wait:farewell disabled' key:s key:s \
+		'wait:power: ACPI S5' 'count:0:shutdown: '
 	QEMU_EXTRA="-device qemu-xhci,id=xhci -device usb-mouse,bus=xhci.0" \
 		tests/smoke.sh build/smoke/tiny.iso bios ok q35 "s mouse 0627:"
 	$(KEYTEST) -device usb-kbd,bus=xhci.0 -device usb-mouse,bus=xhci.0 -- 'wait:keyboard 0627:' \

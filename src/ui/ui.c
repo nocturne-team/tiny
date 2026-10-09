@@ -10,6 +10,7 @@
 #include "power.h"
 #include "ui/about_art.h"
 #include "ui/pointer.h"
+#include "ui/shutdown_seq.h"
 
 #define A_FRAME   ATTR(C_LCYAN, C_BLACK)
 #define A_TITLE   ATTR(C_WHITE, C_BLACK)
@@ -42,6 +43,11 @@ static struct pointer ptr;
 static const char *titles[UI_MAX_PAGES];
 static int tabs_end;  // first column after the tab labels; the clock may use the rest
 static uint8_t last_buttons;
+static bool farewell_on = true;
+
+void ui_set_farewell(bool on) {
+    farewell_on = on;
+}
 
 static size_t visible(void) {
     return (size_t)(rows - 6);
@@ -189,6 +195,42 @@ static void tab_changed(void) {
 #endif
 }
 
+// Waits until `due` (tsc_ms) when the TSC rate is known, else for `ms` by I/O waits.
+static void wait_until(uint64_t due, uint32_t ms) {
+    if (!tsc_hz()) {
+        tsc_delay_us((uint64_t)ms * 1000);
+        return;
+    }
+    while (tsc_ms() < due)
+        cpu_pause();
+}
+
+// The farewell before a reboot or shutdown (an homage to ULTRAKILL): full screen,
+// one line at a time from the top, random short gaps adding up to SHUTDOWN_MS.
+static void farewell(void) {
+    uint32_t gaps[SHUTDOWN_LINES - 1], w, h;
+    shutdown_gaps(rdtsc(), gaps, SHUTDOWN_LINES - 1, SHUTDOWN_MS);
+    gfx_pause(true);
+    gfx_fb_size(&w, &h);
+    gfx_fill_rgb(0, 0, w, h, 0);
+    uint32_t scale = (uint32_t)gfx_get_layout()->scale, th = 16 * scale, margin = 8 * scale;
+    uint32_t fit = h > 2 * margin + th ? (h - 2 * margin) / th : 1;
+    uint64_t due = tsc_ms();
+    for (uint32_t i = 0, row = 0; i < SHUTDOWN_LINES; i++, row++) {
+        if (i) {
+            due += gaps[i - 1];
+            wait_until(due, gaps[i - 1]);
+        }
+        if (row == fit) {  // a short screen: start again at the top rather than scroll
+            gfx_fill_rgb(0, 0, w, h, 0);
+            row = 0;
+        }
+        gfx_text_rgb(margin, margin + row * th, shutdown_lines[i].text, shutdown_lines[i].rgb, 0);
+        klog("shutdown: %s", shutdown_lines[i].text);
+    }
+    wait_until(due + SHUTDOWN_HOLD_MS, SHUTDOWN_HOLD_MS);
+}
+
 static void handle(const struct key_event *k) {
     // Letter keys are commands (R/S confirm); a held key must not confirm itself.
     if (k->key == KEY_CHAR && k->repeat)
@@ -197,6 +239,8 @@ static void handle(const struct key_event *k) {
         char want = nav.pending;
         nav.pending = 0;
         if (k->key == KEY_CHAR && k->ch == want) {
+            if (farewell_on)
+                farewell();
             if (want == 'r')
                 power_reboot();
             power_shutdown();

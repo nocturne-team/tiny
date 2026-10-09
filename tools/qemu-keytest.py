@@ -2,7 +2,7 @@
 """Boot a tiny SMOKE_KEYS ISO in QEMU with PS/2 off and an xHCI, drive USB
 devices over QMP, and check that a key switched tabs.
 
-usage: tools/qemu-keytest.py ISO [--uefi] [--ps2] [QEMU_ARG ...] -- STEP ...
+usage: tools/qemu-keytest.py ISO [--uefi] [--ps2] [--exit=N] [QEMU_ARG ...] -- STEP ...
 
 The machine is q35,i8042=off with -device qemu-xhci,id=xhci; QEMU_ARGs add
 devices (e.g. -device usb-kbd,bus=xhci.0). Steps run in order:
@@ -17,7 +17,8 @@ devices (e.g. -device usb-kbd,bus=xhci.0). Steps run in order:
   click:BUTTON     press and release a mouse button (left, right, middle)
   count:N:REGEX    after QEMU exits, REGEX must match exactly N times
 QEMU must then exit through isa-debug-exit 0x10 (status 33): the SMOKE_KEYS
-build does that on the first tab change.
+build does that on the first tab change. --exit=N expects status N instead
+(0 for a shutdown, or a reboot under -no-reboot).
 """
 import importlib.util
 import os
@@ -47,7 +48,11 @@ def main():
     head, steps = args[:split], args[split + 1:]
     uefi = '--uefi' in head
     ps2 = '--ps2' in head
-    head = [a for a in head if a not in ('--uefi', '--ps2')]
+    want_status = 33
+    for a in head:
+        if a.startswith('--exit='):
+            want_status = int(a[len('--exit='):])
+    head = [a for a in head if a not in ('--uefi', '--ps2') and not a.startswith('--exit=')]
     if not head:
         sys.exit(__doc__)
     iso, extra = head[0], head[1:]
@@ -122,8 +127,8 @@ def main():
             status = qemu.wait(timeout=20)
         except subprocess.TimeoutExpired:
             raise SystemExit('KEYTEST FAIL: QEMU did not exit (no tab change?)')
-        if status != 33:
-            raise SystemExit('KEYTEST FAIL: QEMU exit status %d, expected 33' % status)
+        if status != want_status:
+            raise SystemExit('KEYTEST FAIL: QEMU exit status %d, expected %d' % (status, want_status))
         log = serial(serial_path)
         for n, pattern in counts:
             got = len(re.findall(pattern, log))

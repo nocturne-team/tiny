@@ -123,6 +123,10 @@ void kmain(void) {
     }
     else if (dma)
         storage_probe(&pci, &storage);
+    if (cmdline_has(bootinfo.cmdline, "nofarewell")) {
+        ui_set_farewell(false);
+        klog("ui: farewell disabled by command line");
+    }
     input_init();
     fw_probe(&fw);
     power_init(&fw.acpi);

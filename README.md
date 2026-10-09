@@ -78,7 +78,11 @@ PS/2 emulation, plug the keyboard in and go. If the USB driver misbehaves on
 some machine, pick **tiny (no USB)** in the boot menu: tiny then leaves the USB
 controllers alone and relies on the firmware's emulation.
 **tiny (safe mode: no USB, no storage)** additionally skips the NVMe/SATA probe,
-for a machine where a storage controller misbehaves.
+for a machine where a storage controller misbehaves, and the farewell below.
+
+After R R or S S, tiny says goodbye before the machine goes off: about a second
+of ULTRAKILL's dying V1 diagnostic log, line by line in orange and red (an homage).
+The `nofarewell` command-line word turns it off; safe mode passes it.
 
 ## Building
 
