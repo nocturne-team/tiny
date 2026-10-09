@@ -14,6 +14,13 @@ static void reset(void) {
     memset(&k, 0, sizeof k);
 }
 
+static struct raw_key rk[HID_RAW_MAX];
+
+static size_t diff(uint8_t mods, uint8_t a, uint8_t b, uint8_t c) {
+    const uint8_t r[8] = { mods, 0, a, b, c, 0, 0, 0 };
+    return hid_kbd_diff(&k, r, sizeof r, rk);
+}
+
 int main(void) {
     struct key_event e;
 
@@ -49,7 +56,7 @@ int main(void) {
         { 0x1D, KEY_CHAR, 'z' }, { 0x1E, KEY_CHAR, '1' }, { 0x27, KEY_CHAR, '0' },
         { 0x2C, KEY_CHAR, ' ' }, { 0x28, KEY_ENTER, 0 }, { 0x58, KEY_ENTER, 0 },
         { 0x29, KEY_ESC, 0 }, { 0x3A, KEY_F1, 0 }, { 0x3B, KEY_F2, 0 }, { 0x3C, KEY_F3, 0 },
-        { 0x3D, KEY_F4, 0 }, { 0x3E, KEY_F5, 0 }, { 0x3F, KEY_F6, 0 }, { 0x40, KEY_F7, 0 }, { 0x41, KEY_F8, 0 }, { 0x42, KEY_F9, 0 },
+        { 0x3D, KEY_F4, 0 }, { 0x3E, KEY_F5, 0 }, { 0x3F, KEY_F6, 0 }, { 0x40, KEY_F7, 0 }, { 0x41, KEY_F8, 0 }, { 0x42, KEY_F9, 0 }, { 0x43, KEY_F10, 0 },
         { 0x4A, KEY_HOME, 0 }, { 0x4B, KEY_PGUP, 0 },
         { 0x4D, KEY_END, 0 }, { 0x4E, KEY_PGDN, 0 }, { 0x4F, KEY_RIGHT, 0 },
         { 0x50, KEY_LEFT, 0 }, { 0x51, KEY_DOWN, 0 }, { 0x52, KEY_UP, 0 },
@@ -146,5 +153,67 @@ int main(void) {
     CHECK(!hid_kbd_tick(&k, 10000, &e));
     CHECK_EQ(keys(10, 0x51, 0x4E, 0), 1);
     CHECK_EQ(ev[0].key, KEY_PGDN);
+    // Raw diff: a press, then nothing for an unchanged report.
+    reset();
+    CHECK_EQ(diff(0, 0x04, 0, 0), 1);
+    CHECK_EQ(rk[0].src, RAW_USB);
+    CHECK(rk[0].down);
+    CHECK_EQ(rk[0].usage, 0x04);
+    CHECK_EQ(rk[0].flags, 0);
+    CHECK_EQ(diff(0, 0x04, 0, 0), 0);
+    // Modifiers come first, as usages 0xE0 + bit.
+    CHECK_EQ(diff(0x02, 0x04, 0x05, 0), 2);
+    CHECK_EQ(rk[0].usage, 0xE1);
+    CHECK(rk[0].down);
+    CHECK_EQ(rk[1].usage, 0x05);
+    // Releases.
+    CHECK_EQ(diff(0, 0x05, 0, 0), 2);
+    CHECK_EQ(rk[0].usage, 0xE1);
+    CHECK(!rk[0].down);
+    CHECK_EQ(rk[1].usage, 0x04);
+    CHECK(!rk[1].down);
+    // Both Ctrls at once; a duplicate slot is still one held key.
+    CHECK_EQ(diff(0x11, 0x05, 0x05, 0), 2);
+    CHECK_EQ(rk[0].usage, 0xE0);
+    CHECK_EQ(rk[1].usage, 0xE4);
+    // Presses before releases in one report.
+    reset();
+    diff(0, 0x04, 0, 0);
+    CHECK_EQ(diff(0, 0x05, 0, 0), 2);
+    CHECK_EQ(rk[0].usage, 0x05);
+    CHECK(rk[0].down);
+    CHECK_EQ(rk[1].usage, 0x04);
+    CHECK(!rk[1].down);
+    // ErrorRollOver: one event for a run of them, and the state before it is kept.
+    reset();
+    diff(0, 0x04, 0, 0);
+    {
+        const uint8_t r[8] = { 0, 0, 1, 1, 1, 1, 1, 1 };
+        CHECK_EQ(hid_kbd_diff(&k, r, 8, rk), 1);
+        CHECK_EQ(rk[0].flags, RAW_ROLLOVER);
+        CHECK_EQ(rk[0].usage, 0);
+        CHECK_EQ(hid_kbd_diff(&k, r, 8, rk), 0);
+    }
+    CHECK_EQ(diff(0, 0x04, 0x05, 0), 1);  // only B is new
+    CHECK_EQ(rk[0].usage, 0x05);
+    // Error codes 2 and 3 are not keys; short reports are ignored.
+    reset();
+    CHECK_EQ(diff(0, 0x02, 0x03, 0), 0);
+    {
+        const uint8_t r2[2] = { 0x02, 0 };
+        CHECK_EQ(hid_kbd_diff(&k, r2, 2, rk), 0);
+    }
+    // The diff keeps its own state: hid_kbd_report on the same report doesn't consume it.
+    reset();
+    keys(0, 0x04, 0, 0);
+    CHECK_EQ(diff(0, 0x04, 0, 0), 1);
+    // Worst case fits HID_RAW_MAX: 8 modifiers and 6 keys pressed, then all released.
+    reset();
+    {
+        const uint8_t all[8] = { 0xFF, 0, 4, 5, 6, 7, 8, 9 };
+        const uint8_t none[8] = { 0 };
+        CHECK_EQ(hid_kbd_diff(&k, all, 8, rk), 14);
+        CHECK_EQ(hid_kbd_diff(&k, none, 8, rk), 14);
+    }
     TEST_MAIN_END();
 }

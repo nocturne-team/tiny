@@ -31,6 +31,7 @@ static bool map_usage(uint8_t u, struct key_event *ev) {
     case 0x40: ev->key = KEY_F7; return true;
     case 0x41: ev->key = KEY_F8; return true;
     case 0x42: ev->key = KEY_F9; return true;
+    case 0x43: ev->key = KEY_F10; return true;
     case 0x4A: ev->key = KEY_HOME; return true;
     case 0x4B: ev->key = KEY_PGUP; return true;
     case 0x4D: ev->key = KEY_END; return true;
@@ -87,4 +88,47 @@ bool hid_kbd_tick(struct hid_kbd *k, uint64_t now_ms, struct key_event *out) {
 
 void hid_kbd_cancel_repeat(struct hid_kbd *k) {
     k->held = 0;
+}
+
+static void raw_event(struct raw_key *o, bool down, uint8_t usage) {
+    memset(o, 0, sizeof *o);
+    o->src = RAW_USB;
+    o->down = down;
+    o->usage = usage;
+}
+
+size_t hid_kbd_diff(struct hid_kbd *k, const uint8_t *r, size_t len, struct raw_key *out) {
+    if (len < 3)
+        return 0;
+    uint8_t cur[8] = { 0 };
+    memcpy(cur, r, len < 8 ? len : 8);
+    if (has(cur + 2, 6, HID_ERR_ROLLOVER)) {
+        if (k->raw_rollover)
+            return 0;
+        k->raw_rollover = true;
+        raw_event(out, true, 0);
+        out->flags = RAW_ROLLOVER;
+        return 1;
+    }
+    k->raw_rollover = false;
+    const uint8_t *prev = k->raw_prev;
+    size_t n = 0;
+    for (unsigned b = 0; b < 8; b++)
+        if ((cur[0] & ~prev[0]) & (1u << b))
+            raw_event(&out[n++], true, (uint8_t)(0xE0 + b));
+    for (size_t i = 2; i < 8; i++) {
+        uint8_t u = cur[i];
+        if (u >= 0x04 && !has(prev + 2, 6, u) && !has(cur + 2, i - 2, u))
+            raw_event(&out[n++], true, u);
+    }
+    for (unsigned b = 0; b < 8; b++)
+        if ((prev[0] & ~cur[0]) & (1u << b))
+            raw_event(&out[n++], false, (uint8_t)(0xE0 + b));
+    for (size_t i = 2; i < 8; i++) {
+        uint8_t u = prev[i];
+        if (u >= 0x04 && !has(cur + 2, 6, u) && !has(prev + 2, i - 2, u))
+            raw_event(&out[n++], false, u);
+    }
+    memcpy(k->raw_prev, cur, sizeof cur);
+    return n;
 }
