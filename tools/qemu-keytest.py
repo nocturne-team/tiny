@@ -2,13 +2,15 @@
 """Boot a tiny SMOKE_KEYS ISO in QEMU with PS/2 off and an xHCI, drive USB
 devices over QMP, and check that a key switched tabs.
 
-usage: tools/qemu-keytest.py ISO [--uefi] [QEMU_ARG ...] -- STEP ...
+usage: tools/qemu-keytest.py ISO [--uefi] [--ps2] [QEMU_ARG ...] -- STEP ...
 
 The machine is q35,i8042=off with -device qemu-xhci,id=xhci; QEMU_ARGs add
 devices (e.g. -device usb-kbd,bus=xhci.0). Steps run in order:
   wait:REGEX       wait until REGEX matches on serial once more than at the
                    previous wait for the same REGEX (30 s timeout)
-  key:QCODE        press and release a key (goes to the USB keyboard)
+  key:QCODE[+QCODE...]  press and release keys together (to the USB keyboard,
+                   or with --ps2 to the PS/2 keyboard: i8042 on, add no usb-kbd)
+  hold:QCODE:MS    press a key, hold it for MS milliseconds, release it
   add:DRIVER,K=V…  device_add
   del:ID           device_del
   mouse:DX:DY      relative mouse motion (to the USB mouse)
@@ -44,7 +46,8 @@ def main():
     split = args.index('--')
     head, steps = args[:split], args[split + 1:]
     uefi = '--uefi' in head
-    head = [a for a in head if a != '--uefi']
+    ps2 = '--ps2' in head
+    head = [a for a in head if a not in ('--uefi', '--ps2')]
     if not head:
         sys.exit(__doc__)
     iso, extra = head[0], head[1:]
@@ -52,7 +55,7 @@ def main():
     tmp = tempfile.mkdtemp(prefix='tiny-keys-')
     qmp_path = os.path.join(tmp, 'qmp.sock')
     serial_path = os.path.join(tmp, 'serial.log')
-    cmd = ['qemu-system-x86_64', '-M', 'q35,i8042=off', '-m', '512M', '-display', 'none',
+    cmd = ['qemu-system-x86_64', '-M', 'q35' if ps2 else 'q35,i8042=off', '-m', '512M', '-display', 'none',
            '-no-reboot', '-serial', 'file:' + serial_path,
            '-qmp', 'unix:%s,server=on,wait=off' % qmp_path,
            '-device', 'isa-debug-exit,iobase=0xf4,iosize=0x04',
@@ -85,9 +88,15 @@ def main():
                 seen[rest] = want
             elif kind == 'key':
                 try:
-                    qmp.cmd('send-key', keys=[{'type': 'qcode', 'data': rest}])
+                    qmp.cmd('send-key', keys=[{'type': 'qcode', 'data': k} for k in rest.split('+')])
                 except (OSError, ValueError):
                     pass  # QEMU may exit before answering: that is the expected outcome
+            elif kind == 'hold':
+                code, _, ms = rest.partition(':')
+                try:
+                    qmp.cmd('send-key', keys=[{'type': 'qcode', 'data': code}], **{'hold-time': int(ms)})
+                except (OSError, ValueError):
+                    pass
             elif kind == 'add':
                 driver, *opts = rest.split(',')
                 qmp.cmd('device_add', driver=driver, **dict(o.split('=', 1) for o in opts))

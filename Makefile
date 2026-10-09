@@ -91,6 +91,8 @@ shots: $(ISO)
 	tools/qemu-shot.py $(ISO) build/shots --usb-kbd --usb-mouse f4 shot:usb-devices
 	tools/qemu-shot.py $(ISO) build/shots --disks f6 shot:storage-disks pgdn shot:storage-disks-pgdn
 	tools/qemu-shot.py $(ISO) build/shots --disks --uefi f6 shot:uefi-storage
+	tools/qemu-shot.py $(ISO) build/shots --usb-kbd f10 shot:keys a s d caps_lock \
+		down:shift down:k down:l wait:0.5 shot:keys-held up:l up:k up:shift
 	tools/qemu-shot.py $(ISO) build/shots --usb-kbd --usb-mouse f9 mouse:-5000:-5000 mouse:400:200 wait:0.5 shot:mouse-cursor
 
 # --- host unit tests ----------------------------------------------------------
@@ -222,6 +224,15 @@ smoke: build/disks/nvme.img build/disks/sata.img build/disks/usb.img
 	$(KEYTEST) --uefi -device usb-kbd,bus=xhci.0 -- 'wait:keyboard 0627:' key:f3 'wait:ui: tab 3'
 	$(KEYTEST) -device usb-kbd,bus=xhci.0 -- 'wait:keyboard 0627:' key:f8 'wait:ui: tab 8'
 	$(KEYTEST) -device usb-kbd,bus=xhci.0 -- 'wait:keyboard 0627:' key:f9 'wait:ui: tab 9'
+	$(KEYTEST) -device usb-kbd,bus=xhci.0 -- 'wait:keyboard 0627:' key:f10 'wait:ui: tab 10' \
+		key:a 'wait:keys: usb \S+ press 0x04' 'wait:keys: usb \S+ release 0x04' \
+		key:shift 'wait:press 0xe1' key:ctrl+alt 'wait:press 0xe0' 'wait:press 0xe2' \
+		key:ret 'wait:press 0x28' key:caps_lock 'wait:press 0x39' \
+		hold:esc:1500 'wait:ui: tab 1\b' 'count:0:PANIC'
+	$(KEYTEST) --ps2 -- key:f10 'wait:ui: tab 10' key:a 'wait:keys: ps2 1E make 0x04' \
+		'wait:keys: ps2 9E break 0x04' key:up 'wait:keys: ps2 E0 48 make 0x52' \
+		key:pause 'wait:keys: ps2 E1 1D 45 E1 9D C5 make 0x48' key:caps_lock 'wait:make 0x39' \
+		hold:esc:1500 'wait:ui: tab 1\b' 'count:0:no ACK for LED'
 	$(KEYTEST) -device usb-kbd,bus=xhci.0 -device usb-kbd,bus=xhci.0 -device usb-tablet,bus=xhci.0 -- \
 		'wait:keyboard 0627:' 'wait:keyboard 0627:' 'wait:ignored' key:f3 'wait:ui: tab 3' 'count:1:ignored'
 	QEMU_EXTRA="-device qemu-xhci,id=xhci -device usb-mouse,bus=xhci.0" \

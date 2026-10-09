@@ -11,7 +11,7 @@ ACPI tables, RTC). It boots from one ISO on BIOS and UEFI machines via
 
 | Key | Action |
 |---|---|
-| ← / → or F1–F9 | switch tab (CPU, Memory, PCI, USB, Firmware, Storage, Sensors, Log, About) |
+| ← / → or F1–F10 | switch tab (CPU, Memory, PCI, USB, Firmware, Storage, Sensors, Log, About, Keys) |
 | ↑ / ↓, PgUp / PgDn, Home / End | scroll |
 | R, then R again | reboot |
 | S, then S again | shut down (ACPI S5) |
@@ -43,6 +43,14 @@ The **Log** tab shows everything tiny logged (the same lines as the serial port,
 with timestamps), so on a machine without a serial port you can still see why a
 controller or device didn't come up. Problem lines are shown in red, and the
 view follows new lines while it is scrolled to the bottom.
+
+The **Keys** tab is a keyboard tester. It draws a full-size keyboard (plus the
+ISO key next to left Shift), lights up keys while they are held and marks the
+ones that have been pressed. It counts how many are held at once (for ghosting
+and rollover; USB boot keyboards report at most 6) and lists the raw events: the
+PS/2 scancode bytes, or the USB HID usage and port. Caps, Num and Scroll Lock
+toggle the keyboard's LEDs. While it is open every key goes to the tester, so
+hold **Esc** for a second (or click another tab) to leave.
 
 A USB mouse works too: the wheel scrolls, and clicking a tab label switches to
 it. The pointer is a highlighted cell that appears when the mouse moves.

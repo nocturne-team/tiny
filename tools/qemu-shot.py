@@ -10,6 +10,7 @@ usage: tools/qemu-shot.py ISO OUTDIR [--uefi] [--usb-kbd] [--usb-mouse] [--disks
 Waits for "UI READY" on the serial port, then runs each STEP in order:
   shot:NAME   save OUTDIR/NAME.png
   wait:SECS   sleep
+  down:QCODE / up:QCODE  press or release a key and leave it there
   mouse:DX:DY relative mouse motion
   other       send as a QEMU key (qcode), e.g. right, down, pgdn, f2, r, esc
 The serial log is printed when QEMU is stopped.
@@ -130,6 +131,11 @@ def main():
             elif step.startswith('mouse:'):
                 _, dx, dy = step.split(':')
                 send_mouse(qmp, int(dx), int(dy))
+            elif step.startswith('down:') or step.startswith('up:'):
+                down, _, code = step.partition(':')
+                qmp.cmd('input-send-event', events=[{'type': 'key', 'data': {
+                    'down': down == 'down', 'key': {'type': 'qcode', 'data': code}}}])
+                time.sleep(0.2)
             else:
                 qmp.cmd('send-key', keys=[{'type': 'qcode', 'data': step}])
                 time.sleep(0.4)
