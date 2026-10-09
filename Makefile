@@ -157,6 +157,8 @@ TESTS += test_pci_db
 deps_test_pci_db := src/info/pci_db.c src/info/pci_ids.c
 TESTS += test_shutdown
 deps_test_shutdown := src/ui/shutdown_seq.c
+TESTS += test_groups
+deps_test_groups := src/ui/groups.c
 # (add "TESTS += test_x" and "deps_test_x := ..." lines above this comment)
 
 define TEST_RULE
