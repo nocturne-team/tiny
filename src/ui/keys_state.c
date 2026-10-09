@@ -4,6 +4,8 @@
 #include "ui/kbd_layout.h"
 
 #define USAGE_ESC 0x29
+#define USAGE_ENTER 0x28
+#define USAGE_KP_ENTER 0x58
 
 static bool get(const uint8_t *set, uint8_t u) {
     return set[u >> 3] & (1u << (u & 7));
@@ -39,6 +41,11 @@ static void add_line(struct keys_state *s, const struct raw_key *ev) {
 }
 
 bool keys_apply(struct keys_state *s, const struct raw_key *ev, uint64_t now) {
+    if (s->skip_enter && (ev->usage == USAGE_ENTER || ev->usage == USAGE_KP_ENTER)) {
+        if (!ev->down)
+            s->skip_enter = false;
+        return false;
+    }
     add_line(s, ev);
     uint8_t u = ev->usage;
     if (!u)
@@ -80,6 +87,11 @@ void keys_reset_held(struct keys_state *s) {
     memset(s->held, 0, sizeof s->held);
     s->held_n = 0;
     s->esc_down = false;
+}
+
+void keys_start(struct keys_state *s) {
+    keys_reset_held(s);
+    s->skip_enter = true;
 }
 
 unsigned keys_untested(const struct keys_state *s) {

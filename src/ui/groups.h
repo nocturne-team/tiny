@@ -1,5 +1,4 @@
 #pragma once
-#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -16,9 +15,8 @@ int group_of(const struct ui_group *g, size_t ng, size_t page);
 // The page group `gi`'s F-key selects: its next page when `cur` is already in it
 // (wrapping), else its last-used page (`last[gi]`, or its first page if that is stale).
 size_t group_key(const struct ui_group *g, size_t ng, const uint8_t *last, size_t cur, size_t gi);
-// Records `page` as its group's last-used page, unless it takes the raw keyboard
-// (the key tester): the group's F-key must never reopen onto a page it can't leave by.
-void group_remember(const struct ui_group *g, size_t ng, uint8_t *last, size_t page, bool raw);
+// Records `page` as its group's last-used page.
+void group_remember(const struct ui_group *g, size_t ng, uint8_t *last, size_t page);
 // The page digit `digit` (1-9) selects in cur's group, or -1.
 long group_digit(const struct ui_group *g, size_t ng, size_t cur, int digit);
 // ← / →: the page `delta` steps from `cur`, wrapping.

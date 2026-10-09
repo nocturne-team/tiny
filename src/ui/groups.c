@@ -16,9 +16,9 @@ size_t group_key(const struct ui_group *g, size_t ng, const uint8_t *last, size_
     return group_of(g, ng, last[gi]) == (int)gi ? last[gi] : g[gi].first;
 }
 
-void group_remember(const struct ui_group *g, size_t ng, uint8_t *last, size_t page, bool raw) {
+void group_remember(const struct ui_group *g, size_t ng, uint8_t *last, size_t page) {
     int gi = group_of(g, ng, page);
-    if (gi >= 0 && !raw)
+    if (gi >= 0)
         last[gi] = (uint8_t)page;
 }
 

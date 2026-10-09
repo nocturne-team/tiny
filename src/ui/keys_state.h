@@ -20,12 +20,16 @@ struct keys_state {
     bool esc_down;
     uint64_t esc_since;
     uint8_t leds;          // HID bits: 0 Num, 1 Caps, 2 Scroll
+    bool skip_enter;       // the Enter that started this run is still down
 };
 
 // Applies one event at `now` (ms). True when a lock key flipped s->leds (send it).
 bool keys_apply(struct keys_state *s, const struct raw_key *ev, uint64_t now);
 // True once Esc has been held for KEYS_HOLD_MS.
 bool keys_esc_held(const struct keys_state *s, uint64_t now);
+// Starts a run: forgets held keys (as keys_reset_held) and ignores the Enter (or
+// keypad Enter) that started it, up to and including its release.
+void keys_start(struct keys_state *s);
 // Forgets the held keys and Esc: after leaving, their releases go to another tab.
 void keys_reset_held(struct keys_state *s);
 bool keys_is_held(const struct keys_state *s, uint8_t usage);

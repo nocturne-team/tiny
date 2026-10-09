@@ -92,7 +92,7 @@ shots: $(ISO)
 	tools/qemu-shot.py $(ISO) build/shots --usb-kbd --usb-mouse f2 2 shot:usb-devices
 	tools/qemu-shot.py $(ISO) build/shots --disks f2 3 shot:storage-disks pgdn shot:storage-disks-pgdn
 	tools/qemu-shot.py $(ISO) build/shots --disks --uefi f2 3 shot:uefi-storage
-	tools/qemu-shot.py $(ISO) build/shots --usb-kbd f4 f4 shot:keys a s d caps_lock \
+	tools/qemu-shot.py $(ISO) build/shots --usb-kbd f4 f4 shot:keys-modal ret shot:keys a s d caps_lock \
 		down:shift down:k down:l wait:0.5 shot:keys-held up:l up:k up:shift
 	tools/qemu-shot.py $(ISO) build/shots f4 shot:screen ret wait:2 shot:screen-card right wait:0.5 shot:screen-label \
 		right right right right right right wait:2 shot:screen-gradients right right wait:2 shot:screen-grid esc wait:0.5 shot:screen-back
@@ -239,16 +239,18 @@ smoke: build/disks/nvme.img build/disks/sata.img build/disks/usb.img
 	$(KEYTEST) -device usb-kbd,bus=xhci.0 -- 'wait:keyboard 0627:' key:3 'wait:ui: page System/Firmware'
 	$(KEYTEST) -device usb-kbd,bus=xhci.0 -- 'wait:keyboard 0627:' key:left 'wait:ui: page About/About'
 	$(KEYTEST) -device usb-kbd,bus=xhci.0 -- 'wait:keyboard 0627:' key:f4 'wait:ui: page Tests/Screen' \
-		key:f4 'wait:ui: page Tests/Keys' \
+		key:right 'wait:ui: page Tests/Keys' key:right 'wait:ui: page About/About' 'count:0:keys: started'
+	$(KEYTEST) -device usb-kbd,bus=xhci.0 -- 'wait:keyboard 0627:' key:f4 'wait:ui: page Tests/Screen' \
+		key:f4 'wait:ui: page Tests/Keys' key:b key:ret 'wait:keys: started' \
 		key:a 'wait:keys: usb \S+ press 0x04' 'wait:keys: usb \S+ release 0x04' \
 		key:shift 'wait:press 0xe1' key:ctrl+alt 'wait:press 0xe0' 'wait:press 0xe2' \
 		key:ret 'wait:press 0x28' key:caps_lock 'wait:press 0x39' \
-		hold:esc:1500 'wait:ui: page Tests/Screen' key:f1 'wait:ui: page System/CPU' 'count:0:PANIC'
+		hold:esc:1500 'wait:keys: stopped, 7 keys tested' key:f1 'wait:ui: page System/CPU' 'count:0:PANIC'
 	$(KEYTEST) --ps2 -- key:f4 'wait:ui: page Tests/Screen' key:2 'wait:ui: page Tests/Keys' \
-		key:a 'wait:keys: ps2 1E make 0x04' \
+		key:ret 'wait:keys: started' key:a 'wait:keys: ps2 1E make 0x04' \
 		'wait:keys: ps2 9E break 0x04' key:up 'wait:keys: ps2 E0 48 make 0x52' \
 		key:pause 'wait:keys: ps2 E1 1D 45 E1 9D C5 make 0x48' key:caps_lock 'wait:make 0x39' \
-		hold:esc:1500 'wait:ui: page Tests/Screen' key:f1 'wait:ui: page System/CPU' 'count:0:no ACK for LED'
+		hold:esc:1500 'wait:keys: stopped, 5 keys tested' key:f1 'wait:ui: page System/CPU' 'count:0:no ACK for LED'
 	$(KEYTEST) -device usb-kbd,bus=xhci.0 -- 'wait:keyboard 0627:' key:f4 'wait:ui: page Tests/Screen' \
 		key:ret 'wait:screen: pattern 1 Test card' key:spc 'wait:screen: pattern 2 Black' key:right 'wait:pattern 3 White' \
 		key:backspace 'wait:screen: pattern 2 Black' key:esc 'wait:screen: done' key:f1 'wait:ui: page System/CPU' 'count:0:PANIC'

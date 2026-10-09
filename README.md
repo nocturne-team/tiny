@@ -63,8 +63,10 @@ ISO key next to left Shift), lights up keys while they are held and marks the
 ones that have been pressed. It counts how many are held at once (for ghosting
 and rollover; USB boot keyboards report at most 6) and lists the raw events: the
 PS/2 scancode bytes, or the USB HID usage and port. Caps, Num and Scroll Lock
-toggle the keyboard's LEDs. While it is open every key goes to the tester, so
-hold **Esc** for a second (or click another page or group) to leave.
+toggle the keyboard's LEDs. It starts idle behind a "press Enter to start" box,
+so walking past it with ← / → works as on any page. After **Enter** every key goes
+to the tester; hold **Esc** for a second to stop (the box comes back, and the
+marks stay for the next run), or click another page or group.
 
 The **Screen** page (Tests) is a display tester. It shows the framebuffer mode tiny
 got next to the monitor's preferred mode from EDID, and warns when they differ

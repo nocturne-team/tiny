@@ -2,6 +2,7 @@
 #include "info/tsc.h"
 #include "input/input.h"
 #include "lib/fmt.h"
+#include "lib/serial.h"
 #include "lib/string.h"
 #include "ui/kbd_layout.h"
 #include "ui/keys_state.h"
@@ -18,6 +19,8 @@
 #define K_HELD ATTR(C_BLACK, C_WHITE)
 #define K1_UNTESTED ATTR(C_WHITE, C_DGRAY)  // one-row keys: the background is the key
 #define K1_TESTED ATTR(C_BLACK, C_GREEN)
+#define K_MODAL ATTR(C_WHITE, C_BLUE)
+#define K_MODAL_HEAD ATTR(C_YELLOW, C_BLUE)
 
 // CP437 single-line box drawing.
 #define B_H 0xC4
@@ -26,6 +29,13 @@
 #define B_TR 0xBF
 #define B_BL 0xC0
 #define B_BR 0xD9
+// CP437 double-line box drawing, for the start box.
+#define D_H 0xCD
+#define D_V 0xBA
+#define D_TL 0xC9
+#define D_TR 0xBB
+#define D_BL 0xC8
+#define D_BR 0xBC
 
 static struct keys_state ks;
 static struct kbd_geom geom;
@@ -67,11 +77,44 @@ static void draw_key(int bx, int by, const struct kbd_rect *r, const struct kbd_
     label(x0 + 1, y0 + r->h / 2, r->w - 2, k->label, t);
 }
 
+static const char *const modal_text[] = {
+    "Keyboard tester",
+    "",
+    "Press Enter to start.",
+    "Every key is then tested; hold Esc for 1 s to stop.",
+};
+#define MODAL_LINES (int)(sizeof modal_text / sizeof modal_text[0])
+
+// The box over the keyboard picture while the tester is idle.
+static void draw_modal(int x, int y, int w, int h) {
+    int inner = 0;
+    for (int i = 0; i < MODAL_LINES; i++)
+        if ((int)strlen(modal_text[i]) > inner)
+            inner = (int)strlen(modal_text[i]);
+    int bw = inner + 6, bh = MODAL_LINES + 4;
+    if (bw > w)
+        bw = w;
+    if (bh > h)
+        bh = h;
+    int bx = x + (w - bw) / 2, by = y + (h - bh) / 2;
+    gfx_fill(bx, by, bw, bh, ' ', K_MODAL);
+    gfx_fill(bx + 1, by, bw - 2, 1, D_H, K_MODAL);
+    gfx_fill(bx + 1, by + bh - 1, bw - 2, 1, D_H, K_MODAL);
+    gfx_fill(bx, by + 1, 1, bh - 2, D_V, K_MODAL);
+    gfx_fill(bx + bw - 1, by + 1, 1, bh - 2, D_V, K_MODAL);
+    gfx_put(bx, by, D_TL, K_MODAL);
+    gfx_put(bx + bw - 1, by, D_TR, K_MODAL);
+    gfx_put(bx, by + bh - 1, D_BL, K_MODAL);
+    gfx_put(bx + bw - 1, by + bh - 1, D_BR, K_MODAL);
+    for (int i = 0; i < MODAL_LINES && 2 + i < bh - 1; i++)
+        label(bx + 1, by + 2 + i, bw - 2, modal_text[i], i == 0 ? K_MODAL_HEAD : K_MODAL);
+}
+
 static void keys_draw(const struct page *p, int x, int y, int w, int h) {
-    (void)p;
     int ty = y, end = y + h;
     char buf[128];
-    if (kbd_place(w, h, &geom)) {
+    bool geom_ok = kbd_place(w, h, &geom);
+    if (geom_ok) {
         int bx = x + (w - geom.width) / 2;
         for (int i = 0; i < KBD_KEYS; i++)
             draw_key(bx, y, &geom.r[i], &kbd_keys[i]);
@@ -105,12 +148,14 @@ static void keys_draw(const struct page *p, int x, int y, int w, int h) {
         gfx_puts(x, ty++, buf, K_WARN, w);
     }
     ty++;
-    if (ty < end)
+    if (ty < end && (ks.nlines || p->raw))
         gfx_puts(x, ty++, ks.nlines ? "Recent events" : "Press any key.", ks.nlines ? K_HEAD : K_DIM, w);
     for (size_t i = 0; i < ks.nlines && ty < end; i++) {
         keys_line_text(&ks.lines[i], buf, sizeof buf);
         gfx_puts(x, ty++, buf, ks.lines[i].ev.flags & RAW_ROLLOVER ? K_WARN : K_TEXT, w);
     }
+    if (!p->raw)
+        draw_modal(x, y, w, geom_ok ? geom.height : h);
 }
 
 static bool keys_raw(struct page *p, const struct raw_key *ev) {
@@ -120,26 +165,40 @@ static bool keys_raw(struct page *p, const struct raw_key *ev) {
     return true;
 }
 
+static void stop(struct page *p) {
+    keys_reset_held(&ks);
+    p->raw = NULL;
+}
+
+// Holding Esc stops the run and brings the start box back.
 static bool keys_update(struct page *p) {
     spins++;
-    if (!keys_esc_held(&ks, now_ms()))
+    if (!p->raw || !keys_esc_held(&ks, now_ms()))
         return false;
-    keys_reset_held(&ks);
-    p->leave = true;
+    stop(p);
+    klog("keys: stopped, %u keys tested", ks.tested_n);
     return true;
 }
 
-// Keys held while the tester wasn't current (left by mouse, or a lost release) would
-// otherwise stay lit, and a stuck Esc would bounce the user straight back out.
+// Idle until Enter: arriving on the page (or walking past it) must not grab the keyboard.
+static bool keys_key(struct page *p, const struct key_event *k) {
+    if (p->raw || k->key != KEY_ENTER || k->repeat)
+        return false;
+    keys_start(&ks);
+    p->raw = keys_raw;
+    klog("keys: started");
+    return true;
+}
+
+// A run left by the mouse ends there; keys held meanwhile would otherwise stay lit.
 static void keys_enter(struct page *p) {
-    (void)p;
-    keys_reset_held(&ks);
+    stop(p);
 }
 
 void tab_keys_init(struct page *p) {
     page_clear(p);
     p->title = "Keys";
-    p->raw = keys_raw;
+    p->key = keys_key;
     p->draw = keys_draw;
     p->update = keys_update;
     p->enter = keys_enter;

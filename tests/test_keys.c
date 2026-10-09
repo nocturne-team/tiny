@@ -23,7 +23,35 @@ static bool apply(struct raw_key e, uint64_t now) {
     return keys_apply(&s, &e, now);
 }
 
+// Starting with Enter: that Enter's press and release never reach the tester.
+static void test_start(void) {
+    memset(&s, 0, sizeof s);
+    apply(usb(0x04, true), 0);          // A held from before
+    keys_start(&s);
+    CHECK_EQ(s.held_n, 0);              // held keys forgotten
+    CHECK(keys_is_tested(&s, 0x04));    // tested marks kept across runs
+    apply(usb(0x28, true), 0);          // the Enter that started it
+    CHECK(!keys_is_tested(&s, 0x28));
+    CHECK_EQ(s.nlines, 1);              // only the earlier A press line
+    apply(usb(0x05, true), 0);          // another key meanwhile counts
+    CHECK(keys_is_tested(&s, 0x05));
+    apply(usb(0x28, false), 0);         // its release: skipped, and that ends the skip
+    CHECK_EQ(s.nlines, 2);
+    apply(usb(0x28, true), 0);          // a fresh Enter press counts
+    CHECK(keys_is_tested(&s, 0x28));
+    CHECK_EQ(s.nlines, 3);
+
+    memset(&s, 0, sizeof s);            // keypad Enter (PS/2 E0 1C) started it
+    keys_start(&s);
+    apply(ps2(0x58, true, 0, 0xE0, 0x1C), 0);
+    apply(ps2(0x58, true, RAW_REPEAT, 0xE0, 0x1C), 0);  // typematic while held
+    apply(ps2(0x58, false, 0, 0xE0, 0x9C), 0);
+    CHECK(!keys_is_tested(&s, 0x58));
+    CHECK_EQ(s.nlines, 0);
+}
+
 int main(void) {
+    test_start();
     // Held, most at once, tested.
     memset(&s, 0, sizeof s);
     CHECK_EQ(keys_untested(&s), KBD_KEYS);

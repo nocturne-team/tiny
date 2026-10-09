@@ -192,7 +192,7 @@ static void draw_footer(void) {
         msg = "No keyboard found - plug in a USB keyboard";
         attr = A_ALERT;
     } else if (pages[nav.cur].raw) {
-        msg = "Hold Esc to leave  -  keys light up as you press them";
+        msg = "Hold Esc to stop  -  keys light up as you press them";
     }
     gfx_fill(1, rows - 2, cols - 2, 1, ' ', A_TEXT);
     gfx_puts(2, rows - 2, msg, attr, cols - 4);
@@ -211,7 +211,7 @@ static void draw_all(void) {
 static void go_to(size_t t) {
     if (!nav_switch(&nav, pages, t))
         return;
-    group_remember(groups, group_count, last_page, t, pages[t].raw != NULL);
+    group_remember(groups, group_count, last_page, t);
     int gi = group_of(groups, group_count, t);
     klog("ui: page %s/%s", gi >= 0 ? groups[gi].title : "?", pages[t].title);
 #ifdef SMOKE_KEYS
@@ -338,6 +338,7 @@ static bool update_pages(void) {
             page_scroll(p, 0, vis);
         if (i == nav.cur) {
             draw_content();
+            draw_footer();  // e.g. the key tester stopping changes the footer
             redraw = true;
         }
     }

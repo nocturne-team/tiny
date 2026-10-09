@@ -34,11 +34,11 @@ static void test_group_key(void) {
 
 static void test_group_remember(void) {
     uint8_t last[NG] = { 0, 3, 6, 8, 10 };
-    group_remember(g, NG, last, 4, false);
+    group_remember(g, NG, last, 4);
     CHECK_EQ(last[1], 4);                         // Devices/USB remembered
-    group_remember(g, NG, last, 9, true);         // Tests/Keys takes the keyboard:
-    CHECK_EQ(last[3], 8);                         // F4 must keep opening on Screen
-    group_remember(g, NG, last, 11, false);       // outside every group: ignored
+    group_remember(g, NG, last, 9);
+    CHECK_EQ(last[3], 9);                         // Tests/Keys: idle until Enter, safe to reopen
+    group_remember(g, NG, last, 11);              // outside every group: ignored
     CHECK_EQ(last[4], 10);
 }
 
