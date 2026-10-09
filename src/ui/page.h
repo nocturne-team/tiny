@@ -11,6 +11,8 @@
 // STYLE_GRAPH lines hold a count byte, then that many braille patterns.
 enum line_style { STYLE_TEXT, STYLE_HEAD, STYLE_DIM, STYLE_WARN, STYLE_ART, STYLE_GRAPH };
 
+struct raw_key;
+
 struct line {
     uint8_t style;
     char text[PAGE_LINE_LEN];
@@ -25,6 +27,13 @@ struct page {
     // returns true then. The UI keeps the scroll position across rebuilds.
     bool (*update)(struct page *p);
     bool follow;      // opens at the end and stays there while scrolled to the end
+    // Optional, for pages that take over the keyboard (the key tester):
+    // while current, every raw key event goes here and normal key handling is off.
+    // Returns true when the page needs redrawing.
+    bool (*raw)(struct page *p, const struct raw_key *ev);
+    // Optional: draws the content area itself instead of the lines.
+    void (*draw)(const struct page *p, int x, int y, int w, int h);
+    bool leave;       // set by the page: the UI goes back to the previous tab
     struct line lines[PAGE_MAX_LINES];
 };
 

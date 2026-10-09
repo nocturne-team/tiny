@@ -26,7 +26,7 @@ static struct fw_info fw;
 static struct pci_list pci;
 static struct storage_list storage;
 static struct sensors sensors;
-static struct page pages[9];
+static struct page pages[10];
 static struct usb_summary usb_sum;
 static uint32_t usb_gen;
 static uint64_t log_seq;
@@ -142,7 +142,8 @@ void kmain(void) {
     pages[7].follow = true;
     log_update(&pages[7]);
     tab_about_build(&pages[8]);
+    tab_keys_init(&pages[9]);
     klog("PROBE OK");
 
-    ui_run(pages, 9);
+    ui_run(pages, 10);
 }

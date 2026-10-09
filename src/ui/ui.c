@@ -36,6 +36,7 @@
 
 static struct page *pages;
 static size_t page_count, cur;
+static size_t prev;  // the tab before the current one
 static char pending;  // 'r' or 's' while waiting for confirmation
 static int cols, rows;
 static struct pointer ptr;
@@ -117,6 +118,13 @@ static void draw_clock(void) {
 static void draw_content(void) {
     struct page *p = &pages[cur];
     size_t vis = visible();
+    if (p->draw) {
+        gfx_fill(1, 3, cols - 2, (int)vis, ' ', A_TEXT);
+        p->draw(p, 2, 3, cols - 4, (int)vis);
+        gfx_put(cols - 1, 3, G_V, A_FRAME);
+        gfx_put(cols - 1, 3 + (int)vis - 1, G_V, A_FRAME);
+        return;
+    }
     for (size_t i = 0; i < vis; i++) {
         int y = 3 + (int)i;
         gfx_fill(1, y, cols - 2, 1, ' ', A_TEXT);
@@ -157,6 +165,8 @@ static void draw_footer(void) {
     } else if (!input_have_keyboard()) {
         msg = "No keyboard found - plug in a USB keyboard";
         attr = A_ALERT;
+    } else if (pages[cur].raw) {
+        msg = "Hold Esc to leave  -  keys light up as you press them";
     }
     gfx_fill(1, rows - 2, cols - 2, 1, ' ', A_TEXT);
     gfx_puts(2, rows - 2, msg, attr, cols - 4);
@@ -165,7 +175,8 @@ static void draw_footer(void) {
 static void tab_changed(void) {
     klog("ui: tab %zu", cur + 1);
 #ifdef SMOKE_KEYS
-    qemu_debug_exit(0x10);
+    if (!pages[cur].raw)  // entering the key tester keeps the test going; leaving ends it
+        qemu_debug_exit(0x10);
 #endif
 }
 
@@ -201,6 +212,7 @@ static void handle(const struct key_event *k) {
     case KEY_F7:
     case KEY_F8:
     case KEY_F9:
+    case KEY_F10:
         if ((size_t)(k->key - KEY_F1) < page_count)
             cur = (size_t)(k->key - KEY_F1);
         break;
@@ -216,8 +228,22 @@ static void handle(const struct key_event *k) {
         break;
     default: break;
     }
-    if (cur != before)
+    if (cur != before) {
+        prev = before;
         tab_changed();
+    }
+    draw_tabs();
+    draw_clock();
+    draw_content();
+    draw_footer();
+}
+
+static void switch_tab(size_t t) {
+    if (t == cur)
+        return;
+    prev = cur;
+    cur = t;
+    tab_changed();
     draw_tabs();
     draw_clock();
     draw_content();
@@ -235,13 +261,8 @@ static void handle_pointer(const struct pointer_event *e) {
     last_buttons = e->buttons;
     if (click && ptr.y == 1) {
         int t = pointer_tab_at(titles, page_count, ptr.x);
-        if (t >= 0 && (size_t)t != cur) {
-            cur = (size_t)t;
-            tab_changed();
-            draw_tabs();
-            draw_clock();
-            draw_content();
-        }
+        if (t >= 0)
+            switch_tab((size_t)t);
     }
 }
 
@@ -303,8 +324,17 @@ void ui_run(struct page *pg, size_t count) {
         bool dirty = false;
         struct key_event k;
         while (input_poll(&k)) {
-            handle(&k);
+            if (!pages[cur].raw)
+                handle(&k);
             dirty = true;
+        }
+        struct raw_key rk;
+        while (input_poll_raw(&rk)) {
+            struct page *p = &pages[cur];
+            if (p->raw && p->raw(p, &rk)) {
+                draw_content();
+                dirty = true;
+            }
         }
         struct pointer_event pe;
         while (input_poll_pointer(&pe)) {
@@ -313,6 +343,11 @@ void ui_run(struct page *pg, size_t count) {
         }
         if (update_pages())
             dirty = true;
+        if (pages[cur].leave) {
+            pages[cur].leave = false;
+            switch_tab(prev);
+            dirty = true;
+        }
         if (input_keyboard_changed()) {
             klog("ui: keyboard %s", input_have_keyboard() ? "found" : "missing");
             draw_footer();
