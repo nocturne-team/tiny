@@ -16,6 +16,12 @@ size_t group_key(const struct ui_group *g, size_t ng, const uint8_t *last, size_
     return group_of(g, ng, last[gi]) == (int)gi ? last[gi] : g[gi].first;
 }
 
+void group_remember(const struct ui_group *g, size_t ng, uint8_t *last, size_t page, bool raw) {
+    int gi = group_of(g, ng, page);
+    if (gi >= 0 && !raw)
+        last[gi] = (uint8_t)page;
+}
+
 long group_digit(const struct ui_group *g, size_t ng, size_t cur, int digit) {
     int gi = group_of(g, ng, cur);
     if (gi < 0 || digit < 1 || digit > g[gi].count)

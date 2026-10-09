@@ -211,9 +211,8 @@ static void draw_all(void) {
 static void go_to(size_t t) {
     if (!nav_switch(&nav, pages, t))
         return;
+    group_remember(groups, group_count, last_page, t, pages[t].raw != NULL);
     int gi = group_of(groups, group_count, t);
-    if (gi >= 0)
-        last_page[gi] = (uint8_t)t;
     klog("ui: page %s/%s", gi >= 0 ? groups[gi].title : "?", pages[t].title);
 #ifdef SMOKE_KEYS
     // Entering a page that takes keys (key tester, screen test) keeps the test going.

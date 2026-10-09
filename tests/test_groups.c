@@ -32,6 +32,16 @@ static void test_group_key(void) {
     CHECK_EQ(group_key(g, NG, last, 0, 2), 6);    // falls back to Live's first page
 }
 
+static void test_group_remember(void) {
+    uint8_t last[NG] = { 0, 3, 6, 8, 10 };
+    group_remember(g, NG, last, 4, false);
+    CHECK_EQ(last[1], 4);                         // Devices/USB remembered
+    group_remember(g, NG, last, 9, true);         // Tests/Keys takes the keyboard:
+    CHECK_EQ(last[3], 8);                         // F4 must keep opening on Screen
+    group_remember(g, NG, last, 11, false);       // outside every group: ignored
+    CHECK_EQ(last[4], 10);
+}
+
 static void test_group_digit(void) {
     CHECK_EQ(group_digit(g, NG, 0, 1), 0);
     CHECK_EQ(group_digit(g, NG, 0, 3), 2);
@@ -70,6 +80,7 @@ static void test_label_at(void) {
 int main(void) {
     test_group_of();
     test_group_key();
+    test_group_remember();
     test_group_digit();
     test_page_step();
     test_label_at();
