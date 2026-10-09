@@ -93,6 +93,8 @@ shots: $(ISO)
 	tools/qemu-shot.py $(ISO) build/shots --disks --uefi f6 shot:uefi-storage
 	tools/qemu-shot.py $(ISO) build/shots --usb-kbd f10 shot:keys a s d caps_lock \
 		down:shift down:k down:l wait:0.5 shot:keys-held up:l up:k up:shift
+	tools/qemu-shot.py $(ISO) build/shots f11 shot:screen ret wait:0.5 shot:screen-label \
+		right right right right right right wait:2 shot:screen-gradients right right wait:2 shot:screen-grid esc wait:0.5 shot:screen-back
 	tools/qemu-shot.py $(ISO) build/shots --usb-kbd --usb-mouse f9 mouse:-5000:-5000 mouse:400:200 wait:0.5 shot:mouse-cursor
 
 # --- host unit tests ----------------------------------------------------------

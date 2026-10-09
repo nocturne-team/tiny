@@ -13,8 +13,10 @@ static struct cell front[GFX_MAX_ROWS][GFX_MAX_COLS];  // what is on screen now
 static struct gfx_layout lay;
 static volatile uint8_t *fb_base;
 static uint64_t fb_pitch;
+static uint32_t fb_w, fb_h;
+static uint8_t mask_size[3], mask_shift[3];  // red, green, blue
 static uint32_t palette[16];
-static bool ready;
+static bool ready, paused;
 static int cur_x = -1, cur_y = -1;  // mouse pointer cell, x < 0 = hidden
 
 static const uint8_t vga_rgb[16][3] = {
@@ -37,23 +39,88 @@ bool gfx_init(const struct limine_framebuffer *fb) {
 
     fb_base = fb->address;
     fb_pitch = fb->pitch;
+    fb_w = (uint32_t)fb->width;
+    fb_h = (uint32_t)fb->height;
+    mask_size[0] = fb->red_mask_size;
+    mask_size[1] = fb->green_mask_size;
+    mask_size[2] = fb->blue_mask_size;
+    mask_shift[0] = fb->red_mask_shift;
+    mask_shift[1] = fb->green_mask_shift;
+    mask_shift[2] = fb->blue_mask_shift;
     for (int i = 0; i < 16; i++)
         palette[i] = channel(vga_rgb[i][0], fb->red_mask_size, fb->red_mask_shift) |
                      channel(vga_rgb[i][1], fb->green_mask_size, fb->green_mask_shift) |
                      channel(vga_rgb[i][2], fb->blue_mask_size, fb->blue_mask_shift);
 
-    for (uint64_t y = 0; y < fb->height; y++) {
-        volatile uint32_t *row = (volatile uint32_t *)(fb_base + y * fb_pitch);
-        for (uint64_t x = 0; x < fb->width; x++)
-            row[x] = palette[C_BLACK];
-    }
     for (int y = 0; y < lay.rows; y++)
-        for (int x = 0; x < lay.cols; x++) {
+        for (int x = 0; x < lay.cols; x++)
             back[y][x] = (struct cell){ ' ', ATTR(C_LGRAY, C_BLACK), 0 };
-            front[y][x] = (struct cell){ 0, 0, 0 };  // differs from back: first flush draws all
-        }
     ready = true;
+    gfx_pause(false);  // clears the screen; the first flush draws every cell
     return true;
+}
+
+static uint32_t native(uint32_t rgb) {
+    uint32_t out = 0;
+    for (int i = 0; i < 3; i++)
+        out |= channel((uint8_t)(rgb >> (16 - 8 * i)), mask_size[i], mask_shift[i]);
+    return out;
+}
+
+static volatile uint32_t *fb_row(uint32_t y) {
+    return (volatile uint32_t *)(fb_base + (uint64_t)y * fb_pitch);
+}
+
+void gfx_pause(bool on) {
+    paused = on;
+    if (on || !ready)
+        return;
+    gfx_fill_rgb(0, 0, fb_w, fb_h, 0);
+    for (int y = 0; y < lay.rows; y++)
+        for (int x = 0; x < lay.cols; x++)
+            front[y][x] = (struct cell){ 0, 0, 2 };  // matches no real cell
+}
+
+void gfx_fb_size(uint32_t *w, uint32_t *h) {
+    *w = fb_w;
+    *h = fb_h;
+}
+
+void gfx_fill_rgb(uint32_t x, uint32_t y, uint32_t w, uint32_t h, uint32_t rgb) {
+    if (x >= fb_w || y >= fb_h)
+        return;
+    if (w > fb_w - x)
+        w = fb_w - x;
+    if (h > fb_h - y)
+        h = fb_h - y;
+    uint32_t c = native(rgb);
+    for (uint32_t j = y; j < y + h; j++) {
+        volatile uint32_t *row = fb_row(j);
+        for (uint32_t i = x; i < x + w; i++)
+            row[i] = c;
+    }
+}
+
+void gfx_paint(uint32_t (*pixel)(uint32_t x, uint32_t y, void *ctx), void *ctx) {
+    for (uint32_t y = 0; y < fb_h; y++) {
+        volatile uint32_t *row = fb_row(y);
+        for (uint32_t x = 0; x < fb_w; x++)
+            row[x] = native(pixel(x, y, ctx));
+    }
+}
+
+void gfx_text_rgb(uint32_t px, uint32_t py, const char *s, uint32_t fg, uint32_t bg) {
+    uint32_t f = native(fg), b = native(bg), sc = (uint32_t)lay.scale;
+    for (; *s; s++, px += 8 * sc) {
+        const uint8_t *glyph = font8x16[(uint8_t)*s];
+        for (uint32_t gy = 0; gy < 16 * sc; gy++) {
+            if (py + gy >= fb_h)
+                break;
+            volatile uint32_t *row = fb_row(py + gy);
+            for (uint32_t gx = 0; gx < 8 * sc && px + gx < fb_w; gx++)
+                row[px + gx] = glyph[gy / sc] & (0x80 >> (gx / sc)) ? f : b;
+        }
+    }
 }
 
 bool gfx_ready(void) { return ready; }
@@ -113,7 +180,7 @@ static void draw_cell(int cx, int cy, struct cell c) {
 }
 
 void gfx_flush(void) {
-    if (!ready)
+    if (!ready || paused)
         return;
     for (int y = 0; y < lay.rows; y++)
         for (int x = 0; x < lay.cols; x++) {

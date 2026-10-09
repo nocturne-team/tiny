@@ -32,6 +32,7 @@ static bool map_usage(uint8_t u, struct key_event *ev) {
     case 0x41: ev->key = KEY_F8; return true;
     case 0x42: ev->key = KEY_F9; return true;
     case 0x43: ev->key = KEY_F10; return true;
+    case 0x44: ev->key = KEY_F11; return true;
     case 0x4A: ev->key = KEY_HOME; return true;
     case 0x4B: ev->key = KEY_PGUP; return true;
     case 0x4D: ev->key = KEY_END; return true;

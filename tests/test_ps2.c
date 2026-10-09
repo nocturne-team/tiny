@@ -118,6 +118,10 @@ int main(void) {
     CHECK_EQ(count, 1);
     CHECK_EQ(ev[0].key, KEY_F10);
 
+    FEED(0x57);  // F11
+    CHECK_EQ(count, 1);
+    CHECK_EQ(ev[0].key, KEY_F11);
+
     // Set 1 -> usage table, a sample from every block.
     CHECK_EQ(ps2_set1_usage(0x01, false), 0x29);  // Esc
     CHECK_EQ(ps2_set1_usage(0x1E, false), 0x04);  // A
