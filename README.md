@@ -44,6 +44,8 @@ Input works from a PS/2 keyboard or a USB keyboard on an xHCI controller
 PS/2 emulation, plug the keyboard in and go. If the USB driver misbehaves on
 some machine, pick **tiny (no USB)** in the boot menu: tiny then leaves the USB
 controllers alone and relies on the firmware's emulation.
+**tiny (safe mode: no USB, no storage)** additionally skips the NVMe/SATA probe,
+for a machine where a storage controller misbehaves.
 
 ## Building
 
