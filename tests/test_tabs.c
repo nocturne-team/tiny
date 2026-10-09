@@ -2,6 +2,7 @@
 #include "info/cpu.h"
 #include "info/fw.h"
 #include "info/pci.h"
+#include "info/disk.h"
 #include "lib/logbuf.h"
 #include "ui/about_art.h"
 #include "ui/tabs.h"
@@ -240,7 +241,131 @@ static void test_log(void) {
     CHECK(!p.truncated);
 }
 
+static int count_prefix(const struct page *pg, const char *prefix) {
+    int n = 0;
+    for (size_t i = 0; i < pg->count; i++)
+        n += strncmp(pg->lines[i].text, prefix, strlen(prefix)) == 0;
+    return n;
+}
+
+static void test_storage(void) {
+    static struct storage_list s;
+    memset(&s, 0, sizeof s);
+    tab_storage_build(&p, &s);
+    CHECK_STR(p.title, "Storage");
+    CHECK_STR(find_line(&p, "Storage"), "Storage not probed (no DMA memory)");
+
+    s.probed = true;
+    tab_storage_build(&p, &s);
+    CHECK_STR(find_line(&p, "No drives"), "No drives found");
+
+    s.raid_ctrls = 1;
+    s.ide_ctrls = 2;
+    tab_storage_build(&p, &s);
+    CHECK_STR(find_line(&p, "1 RAID"), "1 RAID/VMD controller: drives behind it are not shown.");
+    CHECK_STR(find_line(&p, "Switch"), "Switch the firmware's storage mode to AHCI to see them.");
+    CHECK_STR(find_line(&p, "2 legacy"), "2 legacy IDE controllers: not supported");
+    s.raid_ctrls = s.ide_ctrls = 0;
+
+    struct disk_info *n = &s.disks[0];
+    disk_init(n, DISK_NVME);
+    n->pci_bus = 2;
+    strcpy(n->model, "Samsung SSD 980 PRO 1TB");
+    strcpy(n->serial, "S5GX");
+    strcpy(n->firmware, "5B2QGXA7");
+    n->namespaces = 1;
+    n->bytes = 1000204886016ull;
+    n->sector = 512;
+    n->smart = true;
+    n->has_temp = true;
+    n->temp_c = 38;
+    n->spare = 100;
+    n->spare_thresh = 10;
+    n->used_pct = 3;
+    n->bytes_read = 12345000000000ull;
+    n->bytes_written = 512000;
+    n->power_on_hours = 1234;
+    n->power_cycles = 567;
+    n->unsafe_shutdowns = 42;
+    n->media_errors = 0;
+    n->error_entries = 7;
+
+    struct disk_info *a = &s.disks[1];
+    disk_init(a, DISK_SATA);
+    a->pci_dev = 0x1f;
+    a->pci_fn = 2;
+    a->port = 1;
+    strcpy(a->model, "QEMU HARDDISK");
+    a->bytes = 10737418240ull;
+    a->sector = 512;
+    a->rpm = 7200;
+    a->smart_supported = a->smart_enabled = a->smart = true;
+    a->realloc = 8;
+    a->pending = 0;
+    a->power_on_hours = 10;
+
+    struct disk_info *c = &s.disks[2];
+    disk_init(c, DISK_ATAPI);
+    c->port = 2;
+    strcpy(c->model, "QEMU DVD-ROM");
+
+    struct disk_info *o = &s.disks[3];
+    disk_init(o, DISK_SATA);
+    strcpy(o->model, "Old");
+    o->rpm = 1;
+    o->smart_supported = true;
+    s.count = 4;
+    tab_storage_build(&p, &s);
+
+    CHECK_STR(find_line(&p, "Drives"), "Drives (4)");
+    CHECK_STR(find_line(&p, "NVMe "), "NVMe  Samsung SSD 980 PRO 1TB");
+    CHECK_STR(find_line(&p, "Interface"), "Interface       NVMe at 02:00.0, 1 namespace");
+    CHECK_STR(find_line(&p, "Capacity"), "Capacity        1.0 TB (512-byte sectors)");
+    CHECK_STR(find_line(&p, "Serial"), "Serial          S5GX");
+    CHECK_STR(find_line(&p, "Health"), "Health          OK");
+    CHECK_STR(find_line(&p, "Temperature"), "Temperature     38 \xf8""C");
+    CHECK_STR(find_line(&p, "Power-on"), "Power-on        1234 hours, 567 power cycles");
+    CHECK_STR(find_line(&p, "Life used"), "Life used       3% (spare 100%, threshold 10%)");
+    CHECK_STR(find_line(&p, "Data"), "Data            12.3 TB read, 512.0 kB written");
+    CHECK_STR(find_line(&p, "Unsafe"), "Unsafe shutdown 42");
+    CHECK_STR(find_line(&p, "Media errors"), "Media errors    0");
+    CHECK_STR(find_line(&p, "Error log"), "Error log       7 entries");
+
+    CHECK_STR(find_line(&p, "SATA "), "SATA  QEMU HARDDISK");
+    CHECK_STR(find_line(&p, "Interface       SATA"), "Interface       SATA (AHCI 00:1f.2, port 1), 7200 rpm");
+    CHECK_STR(find_line(&p, "Capacity        10"), "Capacity        10.7 GB (512-byte sectors)");
+    CHECK_STR(find_line(&p, "Health          w"), "Health          warning (8 reallocated, 0 pending sectors)");
+    CHECK_STR(find_line(&p, "Reallocated"), "Reallocated     8 sectors");
+    CHECK_STR(find_line(&p, "Power-on        10"), "Power-on        10 hours");
+    CHECK_EQ(count_prefix(&p, "Uncorrectable"), 0);  // not reported by the drive
+
+    CHECK_STR(find_line(&p, "Optical"), "Optical  QEMU DVD-ROM");
+    CHECK_STR(find_line(&p, "Interface       SATA (AHCI 00:00.0, port 2)"), "Interface       SATA (AHCI 00:00.0, port 2)");
+
+    CHECK_STR(find_line(&p, "Interface       SATA (AHCI 00:00.0, port 0)"), "Interface       SATA (AHCI 00:00.0, port 0), SSD");
+    CHECK_STR(find_line(&p, "SMART"), "SMART           supported but disabled");
+    CHECK_EQ(count_prefix(&p, "Capacity"), 2);  // unknown capacity is left out
+    CHECK_EQ(count_style(&p, STYLE_HEAD), 5);   // "Drives" + one per drive
+    CHECK_EQ(count_style(&p, STYLE_WARN), 1);   // the SATA warning
+
+    n->error_entries = 1;
+    n->power_on_hours = 1;
+    n->power_cycles = 1;
+    a->realloc = 1;
+    a->power_on_hours = 1;
+    tab_storage_build(&p, &s);
+    CHECK_STR(find_line(&p, "Error log"), "Error log       1 entry");
+    CHECK_STR(find_line(&p, "Reallocated"), "Reallocated     1 sector");
+    CHECK_STR(find_line(&p, "Power-on"), "Power-on        1 hour, 1 power cycle");
+    CHECK_EQ(count_prefix(&p, "Power-on        1 hours"), 0);
+
+    n->crit_warning = 0x04;
+    tab_storage_build(&p, &s);
+    CHECK_STR(find_line(&p, "Health"), "Health          FAILING (critical warning 0x04)");
+}
+
 int main(void) {
+    test_storage();
     test_log();
     test_fw_monitor();
     test_about();

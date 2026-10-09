@@ -16,4 +16,6 @@ void tab_pci_build(struct page *p, const struct pci_list *l);
 void tab_fw_build(struct page *p, const struct fw_info *f);
 void tab_about_build(struct page *p);
 struct logbuf;
+struct storage_list;
+void tab_storage_build(struct page *p, const struct storage_list *s);
 void tab_log_build(struct page *p, const struct logbuf *lb);

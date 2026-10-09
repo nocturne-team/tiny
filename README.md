@@ -2,8 +2,8 @@
 
 A tiny bare-metal x86_64 "operating system" that boots, probes the machine, and
 shows what it found in a keyboard-driven text UI. It covers the CPU (CPUID,
-caches, features, TSC), the memory map and installed RAM, PCI devices, the
-monitor (EDID), and the firmware (BIOS/UEFI, SMBIOS,
+caches, features, TSC), the memory map and installed RAM, PCI devices, drives
+(NVMe and SATA, with SMART health), the monitor (EDID), and the firmware (BIOS/UEFI, SMBIOS,
 ACPI tables, RTC). It boots from one ISO on BIOS and UEFI machines via
 [Limine](https://github.com/Limine-Bootloader/Limine).
 
@@ -11,10 +11,19 @@ ACPI tables, RTC). It boots from one ISO on BIOS and UEFI machines via
 
 | Key | Action |
 |---|---|
-| ← / → or F1–F6 | switch tab (CPU, Memory, PCI, Firmware, Log, About) |
+| ← / → or F1–F7 | switch tab (CPU, Memory, PCI, Firmware, Storage, Log, About) |
 | ↑ / ↓, PgUp / PgDn, Home / End | scroll |
 | R, then R again | reboot |
 | S, then S again | shut down (ACPI S5) |
+
+The **Storage** tab lists NVMe drives and SATA drives on AHCI controllers:
+model, serial, firmware, capacity, and health from the drive's own SMART data
+(NVMe health log; ATA SMART status plus reallocated/pending/uncorrectable
+sectors, temperature and power-on hours). tiny only sends identify and
+health-log commands, never reads or writes the disks' data. NVMe drives are
+given a normal shutdown afterwards, so turning the machine off from tiny doesn't
+add to their unsafe-shutdown count. Drives behind RAID or Intel VMD controllers
+can't be seen; switch the firmware's storage mode to AHCI.
 
 The **Log** tab shows everything tiny logged (the same lines as the serial port,
 with timestamps), so on a machine without a serial port you can still see why a
@@ -42,7 +51,8 @@ make run        # QEMU, legacy BIOS
 make run-uefi   # QEMU, UEFI (OVMF)
 make run-usb    # QEMU, PS/2 off, USB keyboard on an xHCI
 make test       # host unit tests (gcc + ASan/UBSan)
-make smoke      # headless QEMU boots (BIOS, UEFI, panic, no-PS/2, no-ACPI, shutdown, nousb)
+make smoke      # headless QEMU boots (BIOS, UEFI, panic, no-PS/2, no-ACPI, shutdown, nousb,
+                # NVMe + SATA disks)
                 # plus USB key tests driven over QMP (root port, hub, hotplug)
 make shots      # screenshots of every tab into build/shots/
 ```
@@ -61,13 +71,13 @@ Boot from it in BIOS/CSM or UEFI mode. Secure Boot must be off.
 ## Layout
 
 - `src/boot.c`: Limine requests
-- `src/info/`: hardware probing and table parsing
+- `src/info/`: hardware probing and table parsing, NVMe and AHCI identify/SMART
 - `src/ui/`: pages, tabs and the main loop
 - `src/lib/`: formatting, serial + log buffer, command line
 - `src/gfx/`: framebuffer text grid
 - `src/input/`: PS/2 backend and the input front
 - `src/usb/`: xHCI driver, device enumeration, hubs, HID boot keyboard
-- `src/mm/`: DMA page pool and MMIO mapping
+- `src/mm/`: DMA page pool, MMIO mapping and BAR helpers
 - `src/arch/`: x86 helpers and exception handling
 - `tests/`: unit tests and smoke tests
 

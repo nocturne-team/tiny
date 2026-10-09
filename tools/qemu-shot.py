@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """Boot a tiny ISO headless in QEMU, press keys, and save PNG screenshots.
 
-usage: tools/qemu-shot.py ISO OUTDIR [--uefi] [--usb-kbd] [--usb-mouse] [STEP ...]
+usage: tools/qemu-shot.py ISO OUTDIR [--uefi] [--usb-kbd] [--usb-mouse] [--disks] [STEP ...]
 
 --usb-kbd: PS/2 off; keys go to a USB keyboard on an xHCI.
 --usb-mouse: also attach a USB mouse (PS/2 off, xHCI added if needed).
+--disks: attach an empty 1 GB NVMe drive and a 10 GB SATA disk (sparse files).
 
 Waits for "UI READY" on the serial port, then runs each STEP in order:
   shot:NAME   save OUTDIR/NAME.png
@@ -78,7 +79,8 @@ def main():
     uefi = '--uefi' in args
     usb = '--usb-kbd' in args
     mouse = '--usb-mouse' in args
-    args = [a for a in args if a not in ('--uefi', '--usb-kbd', '--usb-mouse')]
+    disks = '--disks' in args
+    args = [a for a in args if a not in ('--uefi', '--usb-kbd', '--usb-mouse', '--disks')]
     if len(args) < 2:
         sys.exit(__doc__)
     iso, outdir, steps = args[0], args[1], args[2:]
@@ -99,6 +101,14 @@ def main():
             cmd[cmd.index('q35')] = 'q35,i8042=off'
             cmd += ['-device', 'qemu-xhci,id=xhci']
         cmd += ['-device', 'usb-mouse,bus=xhci.0']
+    if disks:
+        for name, size in (('nvme.img', 10**9), ('sata.img', 10 * 10**9)):
+            with open(os.path.join(tmp, name), 'wb') as img:
+                img.truncate(size)
+        cmd += ['-drive', 'if=none,id=n0,format=raw,file=' + os.path.join(tmp, 'nvme.img'),
+                '-device', 'nvme,drive=n0,serial=NVME0001',
+                '-drive', 'if=none,id=s0,format=raw,file=' + os.path.join(tmp, 'sata.img'),
+                '-device', 'ide-hd,drive=s0,bus=ide.0']
     if uefi:
         vars_copy = os.path.join(tmp, 'vars.fd')
         shutil.copy(OVMF_VARS, vars_copy)

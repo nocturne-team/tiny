@@ -6,6 +6,7 @@
 #include "info/fw.h"
 #include "info/mem.h"
 #include "info/pci.h"
+#include "info/storage.h"
 #include "info/tsc.h"
 #include "input/input.h"
 #include "lib/cmdline.h"
@@ -22,7 +23,8 @@
 static struct cpu_info cpu;
 static struct fw_info fw;
 static struct pci_list pci;
-static struct page pages[6];
+static struct storage_list storage;
+static struct page pages[7];
 static uint64_t log_seq;
 
 static bool log_update(struct page *p) {
@@ -70,10 +72,13 @@ void kmain(void) {
     }
     pci_scan(pci_config_read, &pci);
     klog("pci: %zu devices%s", pci.count, pci.truncated ? " (truncated)" : "");
+    bool dma = pages_init();
     if (cmdline_has(bootinfo.cmdline, "nousb"))
         klog("usb: disabled by command line");
-    else if (pages_init())
+    else if (dma)
         usb_init(&pci);
+    if (dma)
+        storage_probe(&pci, &storage);
     input_init();
     fw_probe(&fw);
     power_init(&fw.acpi);
@@ -83,11 +88,12 @@ void kmain(void) {
     tab_mem_build(&pages[1], bootinfo.memmap, &fw.smbios);
     tab_pci_build(&pages[2], &pci);
     tab_fw_build(&pages[3], &fw);
-    pages[4].update = log_update;
-    pages[4].follow = true;
-    log_update(&pages[4]);
-    tab_about_build(&pages[5]);
+    tab_storage_build(&pages[4], &storage);
+    pages[5].update = log_update;
+    pages[5].follow = true;
+    log_update(&pages[5]);
+    tab_about_build(&pages[6]);
     klog("PROBE OK");
 
-    ui_run(pages, 6);
+    ui_run(pages, 7);
 }

@@ -18,7 +18,7 @@ own so it can be tried before the next one.
 1. **Log page** (done). The kernel log (everything `klog` printed, with timestamps) on
    its own tab, so real hardware without a serial port can still show why
    something didn't come up. Follows new lines while scrolled to the bottom.
-2. **Storage page.** NVMe and AHCI/SATA drives: model, serial, firmware,
+2. **Storage page** (done). NVMe and AHCI/SATA drives: model, serial, firmware,
    capacity, and the drive's SMART health (NVMe health log; ATA SMART status and
    key attributes). Read-only: tiny never writes to a disk.
 3. **Temperatures and clocks.** Live CPU package/core temperature and effective
