@@ -171,10 +171,20 @@ static void draw_footer(void) {
     gfx_puts(2, rows - 2, msg, attr, cols - 4);
 }
 
+// After a page hook took over or gave back the screen.
+static void draw_all(void) {
+    draw_frame();
+    draw_tabs();
+    draw_clock();
+    draw_content();
+    draw_footer();
+}
+
 static void tab_changed(void) {
     klog("ui: tab %zu", nav.cur + 1);
 #ifdef SMOKE_KEYS
-    if (!pages[nav.cur].raw)  // entering the key tester keeps the test going; leaving ends it
+    // Entering a page that takes keys (key tester, screen test) keeps the test going.
+    if (!pages[nav.cur].raw && !pages[nav.cur].key)
         qemu_debug_exit(0x10);
 #endif
 }
@@ -199,6 +209,10 @@ static void handle(const struct key_event *k) {
     size_t vis = visible();
     long page_step = vis > 1 ? (long)vis - 1 : 1;
     struct page *p = &pages[nav.cur];
+    if (p->key && p->key(p, k)) {
+        draw_all();
+        return;
+    }
     switch (k->key) {
     case KEY_LEFT: next = (nav.cur + page_count - 1) % page_count; break;
     case KEY_RIGHT: next = (nav.cur + 1) % page_count; break;
@@ -212,6 +226,7 @@ static void handle(const struct key_event *k) {
     case KEY_F8:
     case KEY_F9:
     case KEY_F10:
+    case KEY_F11:
         if ((size_t)(k->key - KEY_F1) < page_count)
             next = (size_t)(k->key - KEY_F1);
         break;
@@ -246,14 +261,20 @@ static void switch_tab(size_t t) {
 }
 
 static void handle_pointer(const struct pointer_event *e) {
+    struct page *p = &pages[nav.cur];
+    uint8_t prev_buttons = last_buttons;
+    last_buttons = e->buttons;
+    if (p->pointer && p->pointer(p, e)) {
+        draw_all();
+        return;
+    }
     if (pointer_move(&ptr, e->dx, e->dy, cols, rows))
         gfx_set_cursor(ptr.x, ptr.y);
     if (e->wheel) {
         page_scroll(&pages[nav.cur], pointer_wheel_lines(e->wheel), visible());
         draw_content();
     }
-    bool click = (e->buttons & 1) && !(last_buttons & 1);
-    last_buttons = e->buttons;
+    bool click = (e->buttons & 1) && !(prev_buttons & 1);
     if (click && ptr.y == 1) {
         int t = pointer_tab_at(titles, page_count, ptr.x);
         if (t >= 0)
@@ -327,7 +348,10 @@ void ui_run(struct page *pg, size_t count) {
         while (input_poll_raw(&rk)) {
             struct page *p = &pages[nav.cur];
             if (p->raw && p->raw(p, &rk)) {
-                draw_content();
+                if (p->raw)
+                    draw_content();
+                else
+                    draw_all();  // the page gave the keyboard (and screen) back
                 dirty = true;
             }
         }

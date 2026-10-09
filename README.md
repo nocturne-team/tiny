@@ -11,7 +11,7 @@ ACPI tables, RTC). It boots from one ISO on BIOS and UEFI machines via
 
 | Key | Action |
 |---|---|
-| ← / → or F1–F10 | switch tab (CPU, Memory, PCI, USB, Firmware, Storage, Sensors, Log, About, Keys) |
+| ← / → or F1–F11 | switch tab (CPU, Memory, PCI, USB, Firmware, Storage, Sensors, Log, About, Keys, Screen) |
 | ↑ / ↓, PgUp / PgDn, Home / End | scroll |
 | R, then R again | reboot |
 | S, then S again | shut down (ACPI S5) |
@@ -51,6 +51,16 @@ and rollover; USB boot keyboards report at most 6) and lists the raw events: the
 PS/2 scancode bytes, or the USB HID usage and port. Caps, Num and Scroll Lock
 toggle the keyboard's LEDs. While it is open every key goes to the tester, so
 hold **Esc** for a second (or click another tab) to leave.
+
+The **Screen** tab is a display tester. It shows the framebuffer mode tiny
+got next to the monitor's preferred mode from EDID, and warns when they differ
+(the screen is then scaling, so 1-px patterns look soft). **Enter** starts the
+full-screen patterns: solid black, white, red, green, blue and 50% grey (dead
+and stuck pixels, backlight bleed, uniformity), red/green/blue/grey ramps
+(banding), a 1-px checkerboard (scaling blur) and a 32-px grid whose red line is
+the outermost pixel row and column (overscan cropping). Space, →, PgDn or a left
+click goes to the next pattern, Backspace, ←, PgUp or a right click back; Esc or
+Q, or stepping past the last pattern, returns to the tab.
 
 A USB mouse works too: the wheel scrolls, and clicking a tab label switches to
 it. The pointer is a highlighted cell that appears when the mouse moves.
@@ -98,7 +108,7 @@ Boot from it in BIOS/CSM or UEFI mode. Secure Boot must be off.
 - `src/info/`: hardware probing and table parsing, NVMe and AHCI identify/SMART
 - `src/ui/`: pages, tabs and the main loop
 - `src/lib/`: formatting, serial + log buffer, command line
-- `src/gfx/`: framebuffer text grid
+- `src/gfx/`: framebuffer text grid, direct drawing for the screen test
 - `src/input/`: PS/2 backend and the input front
 - `src/usb/`: xHCI driver, device enumeration, hubs, HID boot keyboard
 - `src/mm/`: DMA page pool, MMIO mapping and BAR helpers

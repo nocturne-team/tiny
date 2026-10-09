@@ -24,3 +24,6 @@ void tab_log_build(struct page *p, const struct logbuf *lb);
 struct usb_summary;
 void tab_usb_build(struct page *p, const struct usb_summary *s);
 void tab_keys_init(struct page *p);
+struct edid_info;
+// `edid` is NULL when the firmware passed none.
+void tab_screen_init(struct page *p, const struct limine_framebuffer *fb, const struct edid_info *edid);

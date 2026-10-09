@@ -151,6 +151,8 @@ TESTS += test_kbd_layout
 deps_test_kbd_layout := src/ui/kbd_layout.c
 TESTS += test_keys
 deps_test_keys := src/ui/keys_state.c src/ui/kbd_layout.c src/lib/fmt.c
+TESTS += test_screen
+deps_test_screen := src/ui/screen_test.c
 # (add "TESTS += test_x" and "deps_test_x := ..." lines above this comment)
 
 define TEST_RULE
@@ -235,6 +237,15 @@ smoke: build/disks/nvme.img build/disks/sata.img build/disks/usb.img
 		'wait:keys: ps2 9E break 0x04' key:up 'wait:keys: ps2 E0 48 make 0x52' \
 		key:pause 'wait:keys: ps2 E1 1D 45 E1 9D C5 make 0x48' key:caps_lock 'wait:make 0x39' \
 		hold:esc:1500 'wait:ui: tab 1\b' 'count:0:no ACK for LED'
+	$(KEYTEST) -device usb-kbd,bus=xhci.0 -- 'wait:keyboard 0627:' key:f11 'wait:ui: tab 11' \
+		key:ret 'wait:screen: pattern 1 Black' key:spc 'wait:screen: pattern 2 White' key:right 'wait:pattern 3 Red' \
+		key:backspace 'wait:screen: pattern 2 White' key:esc 'wait:screen: done' key:f1 'wait:ui: tab 1\b' 'count:0:PANIC'
+	$(KEYTEST) --ps2 -- key:f11 'wait:ui: tab 11' key:ret 'wait:screen: pattern 1 Black' \
+		key:spc key:spc key:spc key:spc key:spc key:spc key:spc key:spc 'wait:screen: pattern 9 Grid' \
+		key:spc 'wait:screen: done' key:f1 'wait:ui: tab 1\b'
+	$(KEYTEST) -device usb-kbd,bus=xhci.0 -device usb-mouse,bus=xhci.0 -- 'wait:keyboard 0627:' 'wait:mouse 0627:' \
+		key:f11 'wait:ui: tab 11' key:ret 'wait:pattern 1 Black' click:left 'wait:pattern 2 White' \
+		click:right 'wait:pattern 1 Black' key:q 'wait:screen: done' key:f1 'wait:ui: tab 1\b'
 	$(KEYTEST) -device usb-kbd,bus=xhci.0 -device usb-kbd,bus=xhci.0 -device usb-tablet,bus=xhci.0 -- \
 		'wait:keyboard 0627:' 'wait:keyboard 0627:' 'wait:ignored' key:f3 'wait:ui: tab 3' 'count:1:ignored'
 	QEMU_EXTRA="-device qemu-xhci,id=xhci -device usb-mouse,bus=xhci.0" \

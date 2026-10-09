@@ -33,10 +33,24 @@ own so it can be tried before the next one.
 6. **Key tester** (done, F10 Keys). A page that lights up keys as they're pressed and shows the raw
    scancode / HID usage.
 
+## Small additions
+
+1. **Screen tester** (done, F11 Screen). Framebuffer mode vs. the EDID preferred
+   mode, and full-screen patterns: solid colours, ramps, 1-px checkerboard, grid
+   with a red edge.
+2. **PCI device names:** a trimmed `pci.ids` subset instead of bare IDs.
+3. **Microcode and mitigations:** microcode revision (MSR 0x8B) and the CPU's
+   speculative-execution mitigation bits on the CPU tab.
+
+## Medium additions (after the small ones)
+
+- **DIMM SPD over SMBus:** real part numbers, JEDEC/XMP/EXPO timings.
+- **HD Audio codecs:** codec IDs and which jacks are plugged in.
+- **TPM:** presence (ACPI TPM2), version, manufacturer.
+- **Network:** MAC addresses of common Intel and Realtek NICs.
+
 ## Ideas (not scheduled)
 
-- **Network:** MAC addresses of common Intel and Realtek NICs.
-- **PCI device names:** a trimmed `pci.ids` subset instead of bare IDs.
 - **Bring up all cores (SMP):** per-core info, hybrid P/E-core topology; groundwork
   for the memory test.
 - **Memory test:** pattern write/verify over usable RAM with progress and an

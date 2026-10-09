@@ -12,6 +12,8 @@
 enum line_style { STYLE_TEXT, STYLE_HEAD, STYLE_DIM, STYLE_WARN, STYLE_ART, STYLE_GRAPH };
 
 struct raw_key;
+struct key_event;
+struct pointer_event;
 
 struct line {
     uint8_t style;
@@ -36,6 +38,10 @@ struct page {
     bool leave;       // set by the page: the UI goes back to the previous tab
     // Optional: called each time the page becomes the current tab.
     void (*enter)(struct page *p);
+    // Optional: sees each key and pointer event before the UI. Returning true means
+    // the page used it; the UI then only redraws. A page may set or clear `raw` here.
+    bool (*key)(struct page *p, const struct key_event *k);
+    bool (*pointer)(struct page *p, const struct pointer_event *e);
     struct line lines[PAGE_MAX_LINES];
 };
 
