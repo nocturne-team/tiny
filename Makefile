@@ -173,7 +173,7 @@ test: $(TESTS:%=$(BUILD)/tests/%)
 # --- QEMU smoke tests ---------------------------------------------------------
 SMOKE_EXPECT :=
 SMOKE_EXPECT += "ps2: keyboard controller ok"
-SMOKE_EXPECT += "tsc: " "cpu: "
+SMOKE_EXPECT += "tsc: " "cpu: " "cpu: microcode 0x1000065, arch caps none 0x0, 12 immunities"
 SMOKE_EXPECT += "MiB available"
 SMOKE_EXPECT += "acpi: rev" "smbios: QEMU"
 SMOKE_EXPECT += "power: PM1a_CNT"

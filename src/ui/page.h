@@ -52,6 +52,8 @@ void page_add(struct page *p, enum line_style style, const char *fmt, ...) __att
 void page_kv(struct page *p, const char *key, const char *fmt, ...) __attribute__((format(printf, 3, 4)));
 // Lays words out in the value column, wrapping at `width` total columns.
 void page_wrap_words(struct page *p, const char *key, const char *const *words, size_t n, size_t width);
+// The same as a comma-separated list ("a, b, c"), for entries that contain spaces.
+void page_wrap_list(struct page *p, const char *key, const char *const *words, size_t n, size_t width);
 // One line of braille cells (at most PAGE_LINE_LEN - 1).
 void page_graph(struct page *p, const uint8_t *cells, size_t n);
 void page_scroll(struct page *p, long delta, size_t visible);

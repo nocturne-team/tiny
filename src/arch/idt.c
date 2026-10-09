@@ -40,11 +40,15 @@ void idt_init(void) {
     __asm__ volatile("lidt %0" : : "m"(ptr));
 }
 
-extern const char rdmsr_safe_insn[], rdmsr_safe_fail[];
+extern const char rdmsr_safe_insn[], rdmsr_safe_fail[], wrmsr_safe_insn[], wrmsr_safe_fail[];
 
 void exception_dispatch(struct int_frame *f) {
     if (f->vector == 13 && f->rip == (uint64_t)(uintptr_t)rdmsr_safe_insn) {
         f->rip = (uint64_t)(uintptr_t)rdmsr_safe_fail;
+        return;
+    }
+    if (f->vector == 13 && f->rip == (uint64_t)(uintptr_t)wrmsr_safe_insn) {
+        f->rip = (uint64_t)(uintptr_t)wrmsr_safe_fail;
         return;
     }
     panic_exception(f);

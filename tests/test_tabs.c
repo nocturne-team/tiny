@@ -53,6 +53,27 @@ static void test_cpu(void) {
     c.tsc_source = TSC_SRC_CPUID_BASE;
     tab_cpu_build(&p, &c, 76);
     CHECK_STR(find_line(&p, "TSC") + 16, "~3696.000 MHz (CPUID base clock)");
+
+    // Security: microcode, immunities, mitigation support.
+    CHECK_STR(find_line(&p, "Microcode") + 16, "not readable");
+    CHECK_STR(find_line(&p, "Not affected") + 16, "none claimed by the CPU");
+    c.have_microcode = true;
+    c.microcode = 0xF4;
+    static const char *imm[] = { "Meltdown", "L1TF" }, *mit[] = { "IBRS/IBPB", "STIBP" };
+    c.immune[0] = imm[0];
+    c.immune[1] = imm[1];
+    c.immune_count = 2;
+    c.mitigations[0] = mit[0];
+    c.mitigations[1] = mit[1];
+    c.mitigation_count = 2;
+    tab_cpu_build(&p, &c, 76);
+    CHECK_STR(find_line(&p, "Microcode") + 16, "0xf4");
+    CHECK_STR(find_line(&p, "Not affected") + 16, "Meltdown, L1TF");
+    CHECK_STR(find_line(&p, "Mitigations") + 16, "IBRS/IBPB, STIBP");
+    strcpy(c.hypervisor, "TCGTCGTCGTCG");
+    c.have_microcode = false;
+    tab_cpu_build(&p, &c, 76);
+    CHECK_STR(find_line(&p, "Microcode") + 16, "not readable (virtual machine)");
 }
 
 static void test_mem(void) {

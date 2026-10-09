@@ -22,6 +22,12 @@ vendors and devices, no subsystems). The same names go to the log at boot. To
 refresh the copy, run `tools/pciids2c.py [path/to/pci.ids]` (default
 `/usr/share/hwdata/pci.ids`); it rewrites `src/info/pci_ids.c`.
 
+The **CPU** tab's Security section shows the loaded microcode revision, the
+speculative-execution issues the CPU says it is not affected by (Intel's
+IA32_ARCH_CAPABILITIES bits; on AMD, CPUID bits plus the issues no AMD CPU has),
+and the speculation controls it offers (IBRS/IBPB, STIBP, SSBD, MD_CLEAR, ...).
+Anything not listed as unaffected may apply; with no OS running, nothing is mitigated.
+
 The **USB** tab lists each xHCI controller (version, USB 2 and USB 3 port
 counts) and every device that answered on its ports: port, speed, vid:pid,
 class, the product name the device reports, and whether tiny uses it (keyboard,

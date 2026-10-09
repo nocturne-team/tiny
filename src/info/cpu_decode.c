@@ -87,3 +87,95 @@ size_t cpu_decode_amd_legacy_caches(uint32_t l5_ecx, uint32_t l5_edx, uint32_t l
             out[n++] = all[i];
     return n;
 }
+
+uint32_t cpu_microcode_rev(uint64_t msr, bool amd) {
+    return amd ? (uint32_t)msr : (uint32_t)(msr >> 32);
+}
+
+static bool streq(const char *a, const char *b) {
+    while (*a && *a == *b)
+        a++, b++;
+    return *a == *b;
+}
+
+// Adds `name` unless it is already listed or the list is full.
+static void add_once(const char **names, size_t *n, size_t max, const char *name) {
+    for (size_t i = 0; i < *n; i++)
+        if (streq(names[i], name))
+            return;
+    if (*n < max)
+        names[(*n)++] = name;
+}
+
+#define ARCH_CAP(bit) (1ull << (bit))
+#define MMIO_NO (ARCH_CAP(13) | ARCH_CAP(14) | ARCH_CAP(15))  // SBDR_SSDP_NO, FBSDP_NO, PSDP_NO
+
+static const struct {
+    uint64_t mask;  // every bit must be set
+    const char *name;
+} intel_immune[] = {
+    { ARCH_CAP(0), "Meltdown" },        // RDCL_NO
+    { ARCH_CAP(0), "L1TF" },
+    { ARCH_CAP(4), "Spectre v4 (SSB)" },
+    { ARCH_CAP(5), "MDS" },
+    { ARCH_CAP(6), "iTLB multihit" },   // IF_PSCHANGE_MC_NO
+    { ARCH_CAP(8), "TSX async abort" },
+    { MMIO_NO, "MMIO stale data" },
+    { ARCH_CAP(20), "BHI" },
+    { ARCH_CAP(24), "post-barrier RSB" },
+    { ARCH_CAP(26), "Downfall (GDS)" },
+    { ARCH_CAP(27), "RFDS" },
+};
+
+// The Linux kernel treats every AMD (and Hygon) CPU as immune to these (the rest
+// are Intel-only bugs: TSX, gather, register file and indirect-target sampling).
+static const char *const amd_immune[] = {
+    "Meltdown", "L1TF", "MDS", "iTLB multihit", "MMIO stale data", "BHI", "post-barrier RSB",
+    "TSX async abort", "Downfall (GDS)", "RFDS", "SRBDS", "ITS",
+};
+
+size_t cpu_immunities(bool amd, const struct cpu_feature_regs *r, uint64_t arch_cap, const char **names, size_t max) {
+    size_t n = 0;
+    if (amd) {
+        for (size_t i = 0; i < sizeof amd_immune / sizeof amd_immune[0]; i++)
+            add_once(names, &n, max, amd_immune[i]);
+        if (r->e8_ebx & (1u << 26))
+            add_once(names, &n, max, "Spectre v4 (SSB)");
+        if (r->e21_eax & (1u << 29))
+            add_once(names, &n, max, "SRSO (Inception)");
+        return n;
+    }
+    for (size_t i = 0; i < sizeof intel_immune / sizeof intel_immune[0]; i++)
+        if ((arch_cap & intel_immune[i].mask) == intel_immune[i].mask)
+            add_once(names, &n, max, intel_immune[i].name);
+    return n;
+}
+
+enum { M_L7D, M_E8B, M_E21A, M_ARCH };
+
+static const struct {
+    uint8_t src, bit;
+    const char *name;
+} mitigation_table[] = {
+    { M_L7D, 26, "IBRS/IBPB" }, { M_L7D, 27, "STIBP" }, { M_L7D, 31, "SSBD" },
+    { M_L7D, 10, "MD_CLEAR" }, { M_L7D, 28, "L1D flush" }, { M_ARCH, 1, "enhanced IBRS" },
+    { M_ARCH, 17, "FB_CLEAR" },
+    { M_E8B, 12, "IBPB" }, { M_E8B, 14, "IBRS" }, { M_E8B, 15, "STIBP" }, { M_E8B, 24, "SSBD" },
+    { M_E8B, 25, "virtual SSBD" }, { M_E21A, 8, "automatic IBRS" }, { M_E21A, 27, "SBPB" },
+};
+
+size_t cpu_mitigations(const struct cpu_feature_regs *r, uint64_t arch_cap, const char **names, size_t max) {
+    size_t n = 0;
+    for (size_t i = 0; i < sizeof mitigation_table / sizeof mitigation_table[0]; i++) {
+        uint64_t v = 0;
+        switch (mitigation_table[i].src) {
+        case M_L7D: v = r->l7_edx; break;
+        case M_E8B: v = r->e8_ebx; break;
+        case M_E21A: v = r->e21_eax; break;
+        default: v = arch_cap; break;
+        }
+        if (v & (1ull << mitigation_table[i].bit))
+            add_once(names, &n, max, mitigation_table[i].name);
+    }
+    return n;
+}

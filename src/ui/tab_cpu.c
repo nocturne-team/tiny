@@ -45,6 +45,22 @@ void tab_cpu_build(struct page *p, const struct cpu_info *c, size_t width) {
     page_kv(p, "CPUID", "max leaf 0x%x, max extended 0x%x", c->max_leaf, c->max_ext_leaf);
 
     page_blank(p);
+    page_add(p, STYLE_HEAD, "Security");
+    if (c->have_microcode)
+        page_kv(p, "Microcode", "0x%x", c->microcode);
+    else
+        page_kv(p, "Microcode", "not readable%s", c->hypervisor[0] ? " (virtual machine)" : "");
+    if (c->immune_count)
+        page_wrap_list(p, "Not affected", c->immune, c->immune_count, width);
+    else
+        page_kv(p, "Not affected", "none claimed by the CPU");
+    if (c->mitigation_count)
+        page_wrap_list(p, "Mitigations", c->mitigations, c->mitigation_count, width);
+    else
+        page_kv(p, "Mitigations", "no speculation controls reported");
+    page_add(p, STYLE_DIM, "Issues not listed as \"not affected\" may apply; an OS has to mitigate them.");
+
+    page_blank(p);
     page_add(p, STYLE_HEAD, "Caches");
     if (!c->cache_count)
         page_add(p, STYLE_DIM, "Not reported by CPUID");

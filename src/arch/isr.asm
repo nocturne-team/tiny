@@ -5,6 +5,7 @@ bits 64
 extern exception_dispatch
 global isr_stub_table
 global rdmsr_safe, rdmsr_safe_insn, rdmsr_safe_fail
+global wrmsr_safe, wrmsr_safe_insn, wrmsr_safe_fail
 
 section .text
 isr_common:
@@ -60,6 +61,20 @@ rdmsr_safe_insn:
     mov eax, 1
     ret
 rdmsr_safe_fail:
+    xor eax, eax
+    ret
+
+; bool wrmsr_safe(uint32_t msr, uint64_t value): false if WRMSR raised #GP.
+wrmsr_safe:
+    mov ecx, edi
+    mov eax, esi
+    mov rdx, rsi
+    shr rdx, 32
+wrmsr_safe_insn:
+    wrmsr
+    mov eax, 1
+    ret
+wrmsr_safe_fail:
     xor eax, eax
     ret
 

@@ -40,8 +40,10 @@ own so it can be tried before the next one.
    with a red edge.
 2. **PCI device names** (done). Every vendor and device from `pci.ids` (about
    20k devices, ~0.8 MB), generated into `src/info/pci_ids.c` by `tools/pciids2c.py`.
-3. **Microcode and mitigations:** microcode revision (MSR 0x8B) and the CPU's
-   speculative-execution mitigation bits on the CPU tab.
+3. **Microcode and mitigations** (done). A Security section on the CPU tab: microcode
+   revision (MSR 0x8B), what the CPU says it is not affected by (Intel
+   IA32_ARCH_CAPABILITIES; AMD CPUID plus Linux's AMD whitelist) and the speculation
+   controls it offers.
 
 ## Medium additions (after the small ones)
 

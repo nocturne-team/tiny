@@ -55,18 +55,24 @@ void page_kv(struct page *p, const char *key, const char *fmt, ...) {
     ksnprintf(l->text, sizeof l->text, "%-*.*s %s", PAGE_KEY_WIDTH - 1, PAGE_KEY_WIDTH - 1, key, value);
 }
 
-void page_wrap_words(struct page *p, const char *key, const char *const *words, size_t n, size_t width) {
+// Words separated by spaces, or by ", " when `list` (a wrapped line then ends in ",").
+static void wrap(struct page *p, const char *key, const char *const *words, size_t n, size_t width, bool list) {
     size_t avail = width > PAGE_KEY_WIDTH + 8 ? width - PAGE_KEY_WIDTH : 8;
     if (avail > PAGE_LINE_LEN - PAGE_KEY_WIDTH - 1)
         avail = PAGE_LINE_LEN - PAGE_KEY_WIDTH - 1;
+    size_t sep = list ? 2 : 1;
+    if (list)
+        avail--;  // room for the trailing comma
 
     char buf[PAGE_LINE_LEN];
     size_t len = 0;
     bool first = true;
     for (size_t i = 0; i <= n; i++) {
         size_t wl = i < n ? strlen(words[i]) : 0;
-        if (i == n || (len && len + 1 + wl > avail)) {
+        if (i == n || (len && len + sep + wl > avail)) {
             if (len || (i == n && first)) {
+                if (list && i < n)
+                    buf[len++] = ',';
                 buf[len] = '\0';
                 page_kv(p, first ? key : "", "%s", buf);
                 first = false;
@@ -75,12 +81,22 @@ void page_wrap_words(struct page *p, const char *key, const char *const *words, 
             if (i == n)
                 break;
         }
+        if (len && list)
+            buf[len++] = ',';
         if (len)
             buf[len++] = ' ';
         size_t copy = wl > avail ? avail : wl;
         memcpy(buf + len, words[i], copy);
         len += copy;
     }
+}
+
+void page_wrap_words(struct page *p, const char *key, const char *const *words, size_t n, size_t width) {
+    wrap(p, key, words, n, width, false);
+}
+
+void page_wrap_list(struct page *p, const char *key, const char *const *words, size_t n, size_t width) {
+    wrap(p, key, words, n, width, true);
 }
 
 static size_t max_scroll(const struct page *p, size_t visible) {

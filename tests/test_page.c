@@ -93,6 +93,24 @@ static void test_wrap(void) {
     expect_kv(p.lines[0].text, "", "averyver");
 }
 
+static void test_wrap_list(void) {
+    const char *names[] = { "Meltdown", "L1TF", "MDS" };
+    page_clear(&p);
+    page_wrap_list(&p, "Not affected", names, 3, 34);  // 18 columns, comma kept on the line
+    CHECK_EQ(p.count, 2);
+    expect_kv(p.lines[0].text, "Not affected", "Meltdown, L1TF,");
+    expect_kv(p.lines[1].text, "", "MDS");
+
+    page_clear(&p);
+    page_wrap_list(&p, "Not affected", names, 3, 80);
+    CHECK_EQ(p.count, 1);
+    expect_kv(p.lines[0].text, "Not affected", "Meltdown, L1TF, MDS");
+
+    page_clear(&p);
+    page_wrap_list(&p, "Not affected", names, 0, 80);
+    expect_kv(p.lines[0].text, "Not affected", "");
+}
+
 static void test_graph(void) {
     page_clear(&p);
     uint8_t cells[3] = { 0x00, 0xFF, 0x40 };
@@ -148,5 +166,6 @@ int main(void) {
     test_overflow();
     test_scroll();
     test_wrap();
+    test_wrap_list();
     TEST_MAIN_END();
 }
