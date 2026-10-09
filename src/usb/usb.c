@@ -1,5 +1,6 @@
 #include "usb/usb.h"
 #include "info/tsc.h"
+#include "input/rawq.h"
 #include "lib/serial.h"
 #include "lib/string.h"
 #include "usb/hid_kbd.h"
@@ -36,6 +37,7 @@ struct usb_dev {
     struct hid_kbd kbd;
     bool is_kbd, is_mouse;                // HID functions that configured successfully
     uint8_t kbd_ep, mouse_ep, hub_ep;     // their indices in xd.intr
+    uint8_t kbd_iface;                    // for SET_REPORT (LEDs)
     uint8_t nports;                       // hub
     struct usb_dev *child[HUB_MAX_PORTS + 1];
     uint16_t skip;                        // hub ports to leave alone until unplugged
@@ -126,6 +128,7 @@ static bool hid_setup(struct usb_dev *u, const struct usb_config_info *ci) {
         return false;
     if (ci->has_kbd && hid_iface_setup(u, ci->kbd_iface, &ci->kbd_ep, &u->kbd_ep)) {
         u->is_kbd = true;
+        u->kbd_iface = ci->kbd_iface;
         kbd_count++;
     }
     if (ci->has_mouse && hid_iface_setup(u, ci->mouse_iface, &ci->mouse_ep, &u->mouse_ep))
@@ -427,6 +430,7 @@ size_t usb_keyboards(void) {
 
 static struct key_event queue[KEYQ];
 static size_t q_head, q_len;
+static struct rawq raw_q;
 
 static void push(const struct key_event *e) {
     if (q_len < KEYQ) {
@@ -520,6 +524,12 @@ static void handle_report(struct usb_dev *u, int i) {
             if (bits & (1u << p))
                 service_hub_port(u, p, true);
     } else if (u->is_kbd && i == u->kbd_ep) {
+        struct raw_key rk[HID_RAW_MAX];
+        size_t nr = hid_kbd_diff(&u->kbd, r, e->actual, rk);
+        for (size_t k = 0; k < nr; k++) {
+            memcpy(rk[k].port, u->name, sizeof rk[k].port);
+            rawq_push(&raw_q, &rk[k]);
+        }
         struct key_event ev[6];
         size_t n = hid_kbd_report(&u->kbd, r, e->actual, tsc_ms(), ev);
         for (size_t k = 0; k < n; k++)
@@ -634,5 +644,24 @@ void usb_summarize(struct usb_summary *s) {
                 if (u->child[k])
                     summarize_dev(s, (uint8_t)i, u->child[k]);
         }
+    }
+}
+
+bool usb_poll_raw(struct raw_key *out) {
+    return rawq_pop(&raw_q, out);
+}
+
+uint32_t usb_raw_dropped(void) {
+    return raw_q.dropped;
+}
+
+void usb_set_leds(uint8_t bits) {
+    for (size_t i = 0; i < USB_MAX_DEVS; i++) {
+        struct usb_dev *u = &devs[i];
+        if (!u->used || !u->is_kbd)
+            continue;
+        u->xd.buf[0] = bits;
+        // Keyboards without LEDs may stall this; nothing to do about it.
+        xhci_control(&u->xd, 0x21, 0x09 /* SET_REPORT */, 0x0200 /* output report 0 */, u->kbd_iface, 1);
     }
 }

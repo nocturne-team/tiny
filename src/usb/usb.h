@@ -22,3 +22,9 @@ bool usb_poll_pointer(struct pointer_event *out);
 uint32_t usb_generation(void);
 // Copies the controllers and the device tree for the USB tab.
 void usb_summarize(struct usb_summary *s);
+
+// Raw key events (key tester), filled while usb_poll services the controllers.
+bool usb_poll_raw(struct raw_key *out);
+uint32_t usb_raw_dropped(void);
+// HID SET_REPORT with the LED byte (bits: 0 Num, 1 Caps, 2 Scroll) to every keyboard.
+void usb_set_leds(uint8_t bits);

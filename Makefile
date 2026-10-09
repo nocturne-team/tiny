@@ -141,6 +141,8 @@ TESTS += test_disk
 deps_test_disk := src/info/disk.c
 TESTS += test_sensors
 deps_test_sensors := src/info/sensors_calc.c
+TESTS += test_rawq
+deps_test_rawq := src/input/rawq.c
 # (add "TESTS += test_x" and "deps_test_x := ..." lines above this comment)
 
 define TEST_RULE

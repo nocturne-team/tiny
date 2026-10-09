@@ -1,6 +1,7 @@
 #include "input/ps2.h"
 #include "arch/x86.h"
 #include "input/ps2_decode.h"
+#include "input/rawq.h"
 #include "lib/serial.h"
 
 #define PS2_DATA 0x60
@@ -12,6 +13,16 @@
 
 static struct ps2_decoder decoder;
 static bool present;
+static struct ps2_raw raw_dec;
+static struct rawq raw_q;
+static bool led_warned;
+
+static void feed_raw(uint8_t b) {
+    struct raw_key r[2];
+    size_t n = ps2_raw_feed(&raw_dec, b, r);
+    for (size_t i = 0; i < n; i++)
+        rawq_push(&raw_q, &r[i]);
+}
 
 static bool wait_write(void) {
     for (int i = 0; i < TIMEOUT; i++) {
@@ -89,8 +100,51 @@ bool ps2_poll(struct key_event *out) {
         return false;
     // Bounded so a wedged controller (OUT_FULL stuck on) cannot freeze the UI.
     for (int i = 0; i < 32 && (inb(PS2_STATUS) & ST_OUT_FULL); i++) {
-        if (ps2_decode(&decoder, inb(PS2_DATA), out))
+        uint8_t b = inb(PS2_DATA);
+        feed_raw(b);
+        if (ps2_decode(&decoder, b, out))
             return true;
     }
     return false;
+}
+
+bool ps2_poll_raw(struct raw_key *out) {
+    return rawq_pop(&raw_q, out);
+}
+
+uint32_t ps2_raw_dropped(void) {
+    return raw_q.dropped;
+}
+
+// Sends one byte to the keyboard and waits ~20 ms for its ACK. Bytes that arrive in the
+// meantime are keystrokes: they still reach the raw queue (the key tester, which sends
+// LED commands, ignores the cooked key events anyway).
+static bool send_acked(uint8_t v) {
+    if (!write_data(v))
+        return false;
+    for (int i = 0; i < 20000; i++) {
+        if (inb(PS2_STATUS) & ST_OUT_FULL) {
+            uint8_t b = inb(PS2_DATA);
+            if (b == 0xFA)
+                return true;
+            if (b == 0xFE)
+                return false;
+            struct key_event ignored;
+            feed_raw(b);
+            ps2_decode(&decoder, b, &ignored);
+        }
+        io_wait();
+    }
+    return false;
+}
+
+void ps2_set_leds(uint8_t bits) {
+    if (!present)
+        return;
+    if (send_acked(0xED) && send_acked(bits & 7))
+        return;
+    if (!led_warned) {
+        led_warned = true;
+        klog("ps2: no ACK for LED command");
+    }
 }

@@ -47,3 +47,11 @@ bool input_have_keyboard(void);
 bool input_keyboard_changed(void);
 // Non-blocking: true and fills *out for each queued pointer event. Call after input_poll.
 bool input_poll_pointer(struct pointer_event *out);
+
+// Non-blocking: true and fills *out for each raw key event (PS/2 first, then USB).
+// Call after input_poll, which reads the hardware.
+bool input_poll_raw(struct raw_key *out);
+// Raw events lost because a queue was full.
+uint32_t input_raw_dropped(void);
+// Lock LEDs on every keyboard (HID bits: 0 Num, 1 Caps, 2 Scroll).
+void input_set_leds(uint8_t hid_bits);
