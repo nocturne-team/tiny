@@ -50,6 +50,12 @@ void gfx_fb_size(uint32_t *w, uint32_t *h);
 void gfx_fill_rgb(uint32_t x, uint32_t y, uint32_t w, uint32_t h, uint32_t rgb);
 // Sets every pixel to pixel(x, y, ctx).
 void gfx_paint(uint32_t (*pixel)(uint32_t x, uint32_t y, void *ctx), void *ctx);
+// Sets the pixels of a rectangle (clipped to the screen) to pixel(x, y, ctx).
+void gfx_paint_rect(uint32_t x0, uint32_t y0, uint32_t w, uint32_t h,
+                    uint32_t (*pixel)(uint32_t x, uint32_t y, void *ctx), void *ctx);
+// Glyph pixels only (the background shows through), clipped on every side, so (px, py)
+// may be off screen. `scanlines` draws every other pixel row at half brightness.
+void gfx_text_fx(int px, int py, const char *s, uint32_t fg, bool scanlines);
 // Text at pixel (px, py) in the UI font and scale; clipped to the screen.
 void gfx_text_rgb(uint32_t px, uint32_t py, const char *s, uint32_t fg, uint32_t bg);
 // Shows one cell with swapped foreground/background colours (the mouse pointer).

@@ -65,3 +65,38 @@ void shutdown_gaps(uint64_t seed, uint32_t *out, size_t n, uint32_t total_ms) {
     for (size_t i = 0; used < extra; i = (i + 1) % n, used++)
         out[i]++;  // rounding leftovers, at most n - 1 ms
 }
+
+static uint32_t clamp(uint32_t v, uint32_t lo, uint32_t hi) {
+    return v < lo ? lo : v > hi ? hi : v;
+}
+
+void crt_off_step(int step, uint32_t w, uint32_t h, struct fx_rect *r) {
+    uint32_t thick = h / 270 > 2 ? h / 270 : 2;  // the collapsed line and the dot
+    uint32_t rw = w, rh = thick, rgb = 0xFFFFFF;
+    if (step < 6) {  // squash: h/2 down to h/72, getting brighter
+        uint32_t k = (uint32_t)(6 - step);
+        rh = h * k * k / 72;
+        uint32_t v = 0x90 + (0xFF - 0x90) * (uint32_t)step / 5;
+        rgb = v * 0x010101;
+    } else if (step < 10) {  // the line shrinks to the middle
+        uint32_t k = (uint32_t)(10 - step);
+        rw = w * k * k / 25;
+    } else {  // the dot fades
+        rw = thick;
+        rgb = step == 10 ? 0x909090 : 0x404040;
+    }
+    if (rh < thick)
+        rh = thick;
+    r->w = clamp(rw, 1, w ? w : 1);
+    r->h = clamp(rh, 1, h ? h : 1);
+    r->x = (w - r->w) / 2;
+    r->y = (h - r->h) / 2;
+    r->rgb = rgb;
+}
+
+uint32_t glitch_chance(int shown) {
+    if (shown < SHUTDOWN_IMMINENT_LINE)
+        return 16;
+    uint32_t c = 16 + (uint32_t)(shown - SHUTDOWN_IMMINENT_LINE + 1) * 16;
+    return c > 192 ? 192 : c;
+}

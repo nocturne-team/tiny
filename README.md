@@ -81,7 +81,10 @@ controllers alone and relies on the firmware's emulation.
 for a machine where a storage controller misbehaves, and the farewell below.
 
 After R R or S S, tiny says goodbye before the machine goes off: about a second
-of ULTRAKILL's dying V1 diagnostic log, line by line in orange and red (an homage).
+of ULTRAKILL's dying V1 diagnostic log, line by line in orange and red (an homage),
+on a failing-VCR picture: new lines shake with colour fringes, bands tear sideways
+or turn to static (more and more as shutdown nears), scanlines when the font is
+scaled up, and a CRT switch-off at the end.
 The `nofarewell` command-line word turns it off; safe mode passes it.
 
 ## Building

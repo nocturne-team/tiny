@@ -102,10 +102,46 @@ void gfx_fill_rgb(uint32_t x, uint32_t y, uint32_t w, uint32_t h, uint32_t rgb) 
 }
 
 void gfx_paint(uint32_t (*pixel)(uint32_t x, uint32_t y, void *ctx), void *ctx) {
-    for (uint32_t y = 0; y < fb_h; y++) {
+    gfx_paint_rect(0, 0, fb_w, fb_h, pixel, ctx);
+}
+
+void gfx_paint_rect(uint32_t x0, uint32_t y0, uint32_t w, uint32_t h,
+                    uint32_t (*pixel)(uint32_t x, uint32_t y, void *ctx), void *ctx) {
+    if (x0 >= fb_w || y0 >= fb_h)
+        return;
+    if (w > fb_w - x0)
+        w = fb_w - x0;
+    if (h > fb_h - y0)
+        h = fb_h - y0;
+    for (uint32_t y = y0; y < y0 + h; y++) {
         volatile uint32_t *row = fb_row(y);
-        for (uint32_t x = 0; x < fb_w; x++)
+        for (uint32_t x = x0; x < x0 + w; x++)
             row[x] = native(pixel(x, y, ctx));
+    }
+}
+
+void gfx_text_fx(int px, int py, const char *s, uint32_t fg, bool scanlines) {
+    uint32_t f = native(fg), dim = native((fg >> 1) & 0x7F7F7F);
+    int sc = lay.scale;
+    for (; *s; s++, px += 8 * sc) {
+        if (px >= (int)fb_w)
+            break;
+        const uint8_t *glyph = font8x16[(uint8_t)*s];
+        for (int gy = 0; gy < 16 * sc; gy++) {
+            int y = py + gy;
+            if (y < 0 || y >= (int)fb_h)
+                continue;
+            uint8_t bits = glyph[gy / sc];
+            if (!bits)
+                continue;
+            uint32_t c = scanlines && (gy % sc) == sc - 1 ? dim : f;
+            volatile uint32_t *row = fb_row((uint32_t)y);
+            for (int gx = 0; gx < 8 * sc; gx++) {
+                int x = px + gx;
+                if (x >= 0 && x < (int)fb_w && (bits & (0x80 >> (gx / sc))))
+                    row[x] = c;
+            }
+        }
     }
 }
 

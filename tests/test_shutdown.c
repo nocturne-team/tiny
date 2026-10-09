@@ -46,6 +46,43 @@ int main(void) {
     shutdown_gaps(54321, b, n, SHUTDOWN_MS);
     CHECK(memcmp(a, b, sizeof a) != 0);
 
+    // CRT switch-off: centred, squashes vertically, then horizontally, then fades.
+    struct fx_rect r, prev = { 0 };
+    for (int step = 0; step < CRT_OFF_STEPS; step++) {
+        crt_off_step(step, 1920, 1080, &r);
+        CHECK(r.w >= 1 && r.h >= 1);
+        CHECK(r.x + r.w <= 1920 && r.y + r.h <= 1080);
+        CHECK(r.x == (1920 - r.w) / 2 && r.y == (1080 - r.h) / 2);
+        if (step > 0 && step <= 5) {
+            CHECK(r.h <= prev.h);
+            CHECK_EQ(r.w, 1920);
+        }
+        if (step > 6) {
+            CHECK(r.w <= prev.w);
+            CHECK(r.h <= prev.h);
+        }
+        prev = r;
+    }
+    crt_off_step(0, 1920, 1080, &r);
+    CHECK_EQ(r.h, 540);
+    crt_off_step(5, 1920, 1080, &r);
+    CHECK(r.h <= 16);
+    CHECK_EQ(r.rgb, 0xFFFFFF);
+    crt_off_step(CRT_OFF_STEPS - 1, 1920, 1080, &r);
+    CHECK(r.w <= 8 && r.h <= 8);
+    CHECK(r.rgb < 0x808080);
+    crt_off_step(0, 1, 1, &r);  // degenerate screens stay in bounds
+    CHECK(r.w == 1 && r.h == 1 && r.x == 0 && r.y == 0);
+
+    // Glitches: rare at first, much more likely once shutdown is imminent.
+    CHECK(glitch_chance(0) > 0);
+    CHECK(glitch_chance(0) < 32);
+    CHECK(glitch_chance(SHUTDOWN_IMMINENT_LINE - 1) == glitch_chance(0));
+    CHECK(glitch_chance(SHUTDOWN_LINES) > 128);
+    CHECK(glitch_chance(SHUTDOWN_LINES) <= 200);
+    for (int i = SHUTDOWN_IMMINENT_LINE; i < SHUTDOWN_LINES; i++)
+        CHECK(glitch_chance(i + 1) >= glitch_chance(i));
+
     shutdown_gaps(7, a, 5, 5);  // as tight as allowed
     for (size_t i = 0; i < 5; i++)
         CHECK_EQ(a[i], 1);
