@@ -145,6 +145,8 @@ TESTS += test_rawq
 deps_test_rawq := src/input/rawq.c
 TESTS += test_kbd_layout
 deps_test_kbd_layout := src/ui/kbd_layout.c
+TESTS += test_keys
+deps_test_keys := src/ui/keys_state.c src/ui/kbd_layout.c src/lib/fmt.c
 # (add "TESTS += test_x" and "deps_test_x := ..." lines above this comment)
 
 define TEST_RULE
