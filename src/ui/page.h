@@ -34,6 +34,8 @@ struct page {
     // Optional: draws the content area itself instead of the lines.
     void (*draw)(const struct page *p, int x, int y, int w, int h);
     bool leave;       // set by the page: the UI goes back to the previous tab
+    // Optional: called each time the page becomes the current tab.
+    void (*enter)(struct page *p);
     struct line lines[PAGE_MAX_LINES];
 };
 
@@ -50,3 +52,15 @@ void page_scroll(struct page *p, long delta, size_t visible);
 void page_scroll_to(struct page *p, bool end, size_t visible);
 // True when the last line is on screen.
 bool page_at_end(const struct page *p, size_t visible);
+
+
+// Which tab is shown, the one before it, and a pending R/S confirmation ('r', 's' or 0).
+struct ui_nav {
+    size_t cur, prev;
+    char pending;
+};
+
+// Switches to tab t: remembers the previous tab, cancels a pending confirmation (it
+// belongs to the tab it was started on), drops a stale leave request and calls the
+// page's enter hook. False, and nothing changes, when t is already current.
+bool nav_switch(struct ui_nav *n, struct page *pages, size_t t);

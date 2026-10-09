@@ -35,9 +35,8 @@
 #define G_DN 0x19
 
 static struct page *pages;
-static size_t page_count, cur;
-static size_t prev;  // the tab before the current one
-static char pending;  // 'r' or 's' while waiting for confirmation
+static size_t page_count;
+static struct ui_nav nav;  // current and previous tab, pending R/S confirmation
 static int cols, rows;
 static struct pointer ptr;
 static const char *titles[UI_MAX_PAGES];
@@ -84,7 +83,7 @@ static void draw_tabs(void) {
     for (size_t i = 0; i < page_count; i++) {
         char label[24];
         ksnprintf(label, sizeof label, " F%zu %s ", i + 1, pages[i].title);
-        x += gfx_puts(x, 1, label, i == cur ? A_TAB_SEL : A_TEXT, cols - 3 - x) + 1;
+        x += gfx_puts(x, 1, label, i == nav.cur ? A_TAB_SEL : A_TEXT, cols - 3 - x) + 1;
     }
     tabs_end = x + 1;
 }
@@ -116,7 +115,7 @@ static void draw_clock(void) {
 }
 
 static void draw_content(void) {
-    struct page *p = &pages[cur];
+    struct page *p = &pages[nav.cur];
     size_t vis = visible();
     if (p->draw) {
         gfx_fill(1, 3, cols - 2, (int)vis, ' ', A_TEXT);
@@ -156,16 +155,16 @@ static void draw_footer(void) {
               page_count);
     const char *msg = cols >= 72 ? keys : "\x1b\x1a tab  \x18\x19 scroll  R reboot  S off";
     uint8_t attr = A_TEXT;
-    if (pending == 'r') {
+    if (nav.pending == 'r') {
         msg = "Press R again to REBOOT - any other key cancels";
         attr = A_ALERT;
-    } else if (pending == 's') {
+    } else if (nav.pending == 's') {
         msg = "Press S again to SHUT DOWN - any other key cancels";
         attr = A_ALERT;
     } else if (!input_have_keyboard()) {
         msg = "No keyboard found - plug in a USB keyboard";
         attr = A_ALERT;
-    } else if (pages[cur].raw) {
+    } else if (pages[nav.cur].raw) {
         msg = "Hold Esc to leave  -  keys light up as you press them";
     }
     gfx_fill(1, rows - 2, cols - 2, 1, ' ', A_TEXT);
@@ -173,9 +172,9 @@ static void draw_footer(void) {
 }
 
 static void tab_changed(void) {
-    klog("ui: tab %zu", cur + 1);
+    klog("ui: tab %zu", nav.cur + 1);
 #ifdef SMOKE_KEYS
-    if (!pages[cur].raw)  // entering the key tester keeps the test going; leaving ends it
+    if (!pages[nav.cur].raw)  // entering the key tester keeps the test going; leaving ends it
         qemu_debug_exit(0x10);
 #endif
 }
@@ -184,9 +183,9 @@ static void handle(const struct key_event *k) {
     // Letter keys are commands (R/S confirm); a held key must not confirm itself.
     if (k->key == KEY_CHAR && k->repeat)
         return;
-    if (pending) {
-        char want = pending;
-        pending = 0;
+    if (nav.pending) {
+        char want = nav.pending;
+        nav.pending = 0;
         if (k->key == KEY_CHAR && k->ch == want) {
             if (want == 'r')
                 power_reboot();
@@ -196,13 +195,13 @@ static void handle(const struct key_event *k) {
         return;
     }
 
-    size_t before = cur;
+    size_t next = nav.cur;
     size_t vis = visible();
     long page_step = vis > 1 ? (long)vis - 1 : 1;
-    struct page *p = &pages[cur];
+    struct page *p = &pages[nav.cur];
     switch (k->key) {
-    case KEY_LEFT: cur = (cur + page_count - 1) % page_count; break;
-    case KEY_RIGHT: cur = (cur + 1) % page_count; break;
+    case KEY_LEFT: next = (nav.cur + page_count - 1) % page_count; break;
+    case KEY_RIGHT: next = (nav.cur + 1) % page_count; break;
     case KEY_F1:
     case KEY_F2:
     case KEY_F3:
@@ -214,7 +213,7 @@ static void handle(const struct key_event *k) {
     case KEY_F9:
     case KEY_F10:
         if ((size_t)(k->key - KEY_F1) < page_count)
-            cur = (size_t)(k->key - KEY_F1);
+            next = (size_t)(k->key - KEY_F1);
         break;
     case KEY_UP: page_scroll(p, -1, vis); break;
     case KEY_DOWN: page_scroll(p, 1, vis); break;
@@ -224,14 +223,12 @@ static void handle(const struct key_event *k) {
     case KEY_END: page_scroll_to(p, true, vis); break;
     case KEY_CHAR:
         if (k->ch == 'r' || k->ch == 's')
-            pending = k->ch;
+            nav.pending = k->ch;
         break;
     default: break;
     }
-    if (cur != before) {
-        prev = before;
+    if (nav_switch(&nav, pages, next))
         tab_changed();
-    }
     draw_tabs();
     draw_clock();
     draw_content();
@@ -239,10 +236,8 @@ static void handle(const struct key_event *k) {
 }
 
 static void switch_tab(size_t t) {
-    if (t == cur)
+    if (!nav_switch(&nav, pages, t))
         return;
-    prev = cur;
-    cur = t;
     tab_changed();
     draw_tabs();
     draw_clock();
@@ -254,7 +249,7 @@ static void handle_pointer(const struct pointer_event *e) {
     if (pointer_move(&ptr, e->dx, e->dy, cols, rows))
         gfx_set_cursor(ptr.x, ptr.y);
     if (e->wheel) {
-        page_scroll(&pages[cur], pointer_wheel_lines(e->wheel), visible());
+        page_scroll(&pages[nav.cur], pointer_wheel_lines(e->wheel), visible());
         draw_content();
     }
     bool click = (e->buttons & 1) && !(last_buttons & 1);
@@ -283,7 +278,7 @@ static bool update_pages(void) {
             page_scroll_to(p, true, vis);
         else
             page_scroll(p, 0, vis);
-        if (i == cur) {
+        if (i == nav.cur) {
             draw_content();
             redraw = true;
         }
@@ -324,13 +319,13 @@ void ui_run(struct page *pg, size_t count) {
         bool dirty = false;
         struct key_event k;
         while (input_poll(&k)) {
-            if (!pages[cur].raw)
+            if (!pages[nav.cur].raw)
                 handle(&k);
             dirty = true;
         }
         struct raw_key rk;
         while (input_poll_raw(&rk)) {
-            struct page *p = &pages[cur];
+            struct page *p = &pages[nav.cur];
             if (p->raw && p->raw(p, &rk)) {
                 draw_content();
                 dirty = true;
@@ -343,9 +338,9 @@ void ui_run(struct page *pg, size_t count) {
         }
         if (update_pages())
             dirty = true;
-        if (pages[cur].leave) {
-            pages[cur].leave = false;
-            switch_tab(prev);
+        if (pages[nav.cur].leave) {
+            pages[nav.cur].leave = false;
+            switch_tab(nav.prev);
             dirty = true;
         }
         if (input_keyboard_changed()) {

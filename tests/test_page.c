@@ -109,7 +109,39 @@ static void test_graph(void) {
     CHECK_EQ((uint8_t)p.lines[1].text[0], PAGE_LINE_LEN - 1);
 }
 
+static int entered;
+static void count_enter(struct page *pg) {
+    (void)pg;
+    entered++;
+}
+
+// Tab switches from the keyboard, the mouse, or a page asking to leave.
+static void test_nav(void) {
+    static struct page pages[3];
+    memset(pages, 0, sizeof pages);
+    pages[2].enter = count_enter;
+    pages[2].leave = true;  // stale: set while the page was not current
+    struct ui_nav n = { .cur = 0, .prev = 0, .pending = 'r' };
+
+    CHECK(nav_switch(&n, pages, 2));
+    CHECK_EQ(n.cur, 2);
+    CHECK_EQ(n.prev, 0);
+    CHECK_EQ(n.pending, 0);        // a pending reboot/shutdown confirmation is cancelled
+    CHECK(!pages[2].leave);        // a stale leave request is dropped on entry
+    CHECK_EQ(entered, 1);
+
+    CHECK(!nav_switch(&n, pages, 2));  // already there: nothing happens
+    CHECK_EQ(entered, 1);
+
+    CHECK(nav_switch(&n, pages, n.prev));  // back to the previous tab
+    CHECK_EQ(n.cur, 0);
+    CHECK_EQ(n.prev, 2);
+    CHECK(nav_switch(&n, pages, 1));  // a page without an enter hook
+    CHECK_EQ(entered, 1);
+}
+
 int main(void) {
+    test_nav();
     test_graph();
     test_add_and_kv();
     test_long_value();

@@ -129,10 +129,18 @@ static bool keys_update(struct page *p) {
     return true;
 }
 
+// Keys held while the tester wasn't current (left by mouse, or a lost release) would
+// otherwise stay lit, and a stuck Esc would bounce the user straight back out.
+static void keys_enter(struct page *p) {
+    (void)p;
+    keys_reset_held(&ks);
+}
+
 void tab_keys_init(struct page *p) {
     page_clear(p);
     p->title = "Keys";
     p->raw = keys_raw;
     p->draw = keys_draw;
     p->update = keys_update;
+    p->enter = keys_enter;
 }

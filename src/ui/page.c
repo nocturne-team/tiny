@@ -115,3 +115,15 @@ void page_graph(struct page *p, const uint8_t *cells, size_t n) {
     l->text[0] = (char)n;
     memcpy(l->text + 1, cells, n);
 }
+
+bool nav_switch(struct ui_nav *n, struct page *pages, size_t t) {
+    if (t == n->cur)
+        return false;
+    n->prev = n->cur;
+    n->cur = t;
+    n->pending = 0;
+    pages[t].leave = false;
+    if (pages[t].enter)
+        pages[t].enter(&pages[t]);
+    return true;
+}
