@@ -18,6 +18,7 @@
 #define A_DIM     ATTR(C_CYAN, C_BLACK)
 #define A_WARN    ATTR(C_LRED, C_BLACK)
 #define A_ART     ATTR(C_WHITE, C_BLACK)
+#define A_GRAPH   ATTR(C_LGREEN, C_BLACK)
 #define A_TAB_SEL ATTR(C_BLACK, C_CYAN)
 #define A_ALERT   ATTR(C_YELLOW, C_RED)
 
@@ -127,6 +128,10 @@ static void draw_content(void) {
             int row = (unsigned char)l->text[0] - 1;
             for (int c = 0; row >= 0 && row < ABOUT_ART_ROWS && c < ABOUT_ART_COLS && c < cols - 4; c++)
                 gfx_put_braille(2 + c, y, about_art[row][c], A_ART);
+        } else if (l->style == STYLE_GRAPH) {
+            int n = (unsigned char)l->text[0];
+            for (int c = 0; c < n && c < cols - 4 - PAGE_KEY_WIDTH; c++)
+                gfx_put_braille(2 + PAGE_KEY_WIDTH + c, y, (uint8_t)l->text[1 + c], A_GRAPH);
         } else {
             gfx_puts(2, y, l->text, style_attr(l->style), cols - 4);
         }

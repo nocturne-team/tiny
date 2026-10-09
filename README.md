@@ -11,7 +11,7 @@ ACPI tables, RTC). It boots from one ISO on BIOS and UEFI machines via
 
 | Key | Action |
 |---|---|
-| ← / → or F1–F7 | switch tab (CPU, Memory, PCI, Firmware, Storage, Log, About) |
+| ← / → or F1–F8 | switch tab (CPU, Memory, PCI, Firmware, Storage, Sensors, Log, About) |
 | ↑ / ↓, PgUp / PgDn, Home / End | scroll |
 | R, then R again | reboot |
 | S, then S again | shut down (ACPI S5) |
@@ -24,6 +24,12 @@ health-log commands, never reads or writes the disks' data. NVMe drives are
 given a normal shutdown afterwards, so turning the machine off from tiny doesn't
 add to their unsafe-shutdown count. Drives behind RAID or Intel VMD controllers
 can't be seen; switch the firmware's storage mode to AHCI.
+
+The **Sensors** tab shows the CPU temperature (Intel core and package sensors
+with TjMax; AMD Tctl) and the effective clock from APERF/MPERF, refreshed every
+second with a two-minute graph of each. Only the boot CPU is read, and tiny
+keeps it busy, so these are the readings of one loaded core. Virtual machines
+usually have no readable sensors.
 
 The **Log** tab shows everything tiny logged (the same lines as the serial port,
 with timestamps), so on a machine without a serial port you can still see why a

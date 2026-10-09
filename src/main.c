@@ -6,6 +6,7 @@
 #include "info/fw.h"
 #include "info/mem.h"
 #include "info/pci.h"
+#include "info/sensors.h"
 #include "info/storage.h"
 #include "info/tsc.h"
 #include "input/input.h"
@@ -24,8 +25,22 @@ static struct cpu_info cpu;
 static struct fw_info fw;
 static struct pci_list pci;
 static struct storage_list storage;
-static struct page pages[7];
+static struct sensors sensors;
+static struct page pages[8];
 static uint64_t log_seq;
+
+static uint64_t sensors_ms;
+
+// Samples once a second (never when the TSC frequency is unknown).
+static bool sensors_update(struct page *p) {
+    uint64_t now = tsc_ms();
+    if (now - sensors_ms < 1000)
+        return false;
+    sensors_ms = now;
+    sensors_sample(&sensors);
+    tab_sensors_build(p, &sensors);
+    return true;
+}
 
 static bool log_update(struct page *p) {
     const struct logbuf *lb = klog_buffer();
@@ -89,11 +104,16 @@ void kmain(void) {
     tab_pci_build(&pages[2], &pci);
     tab_fw_build(&pages[3], &fw);
     tab_storage_build(&pages[4], &storage);
-    pages[5].update = log_update;
-    pages[5].follow = true;
-    log_update(&pages[5]);
-    tab_about_build(&pages[6]);
+    sensors_init(&sensors, &cpu);
+    sensors_sample(&sensors);
+    sensors_ms = tsc_ms();
+    tab_sensors_build(&pages[5], &sensors);
+    pages[5].update = sensors_update;
+    pages[6].update = log_update;
+    pages[6].follow = true;
+    log_update(&pages[6]);
+    tab_about_build(&pages[7]);
     klog("PROBE OK");
 
-    ui_run(pages, 7);
+    ui_run(pages, 8);
 }

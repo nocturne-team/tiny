@@ -17,5 +17,7 @@ void tab_fw_build(struct page *p, const struct fw_info *f);
 void tab_about_build(struct page *p);
 struct logbuf;
 struct storage_list;
+struct sensors;
+void tab_sensors_build(struct page *p, const struct sensors *s);
 void tab_storage_build(struct page *p, const struct storage_list *s);
 void tab_log_build(struct page *p, const struct logbuf *lb);

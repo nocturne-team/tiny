@@ -1,4 +1,5 @@
 #pragma once
+#include <stdbool.h>
 #include <stdint.h>
 
 static inline void outb(uint16_t port, uint8_t v) { __asm__ volatile("outb %0, %1" : : "a"(v), "Nd"(port)); }
@@ -35,6 +36,10 @@ __attribute__((noreturn)) static inline void cpu_halt_forever(void) {
 
 // Exits QEMU when started with -device isa-debug-exit,iobase=0xf4 (status = code*2+1).
 static inline void qemu_debug_exit(uint8_t code) { outb(0xf4, code); }
+
+// RDMSR that returns false instead of faulting on an MSR the CPU doesn't have (isr.asm).
+// Needs idt_init().
+bool rdmsr_safe(uint32_t msr, uint64_t *out);
 
 static inline uint64_t read_cr3(void) { uint64_t v; __asm__ volatile("mov %%cr3, %0" : "=r"(v)); return v; }
 static inline void invlpg(uint64_t va) { __asm__ volatile("invlpg (%0)" : : "r"(va) : "memory"); }

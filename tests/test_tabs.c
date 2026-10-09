@@ -3,6 +3,7 @@
 #include "info/fw.h"
 #include "info/pci.h"
 #include "info/disk.h"
+#include "info/sensors.h"
 #include "lib/logbuf.h"
 #include "ui/about_art.h"
 #include "ui/tabs.h"
@@ -364,7 +365,68 @@ static void test_storage(void) {
     CHECK_STR(find_line(&p, "Health"), "Health          FAILING (critical warning 0x04)");
 }
 
+static void test_sensors(void) {
+    static struct sensors s;
+    memset(&s, 0, sizeof s);
+    tab_sensors_build(&p, &s);
+    CHECK_STR(p.title, "Sensors");
+    CHECK_STR(find_line(&p, "No temperature"), "No temperature sensor tiny can read (virtual machine, or unsupported CPU)");
+    CHECK_STR(find_line(&p, "Effective"), "Effective       not available (no APERF/MPERF)");
+    CHECK_EQ(count_style(&p, STYLE_GRAPH), 0);
+
+    // Intel: package + core, a clock still being measured.
+    s.kind = SENS_INTEL;
+    s.has_core = s.has_pkg = s.has_clock = true;
+    s.tjmax = 100;
+    s.tsc_hz = 3700000000ull;
+    s.core_ok = s.pkg_ok = true;
+    s.core_mc = 52000;
+    s.pkg_mc = 54000;
+    s.have_range = true;
+    s.min_mc = 41000;
+    s.max_mc = 67000;
+    hist_push(&s.temp, 54);
+    tab_sensors_build(&p, &s);
+    CHECK_STR(find_line(&p, "Package"), "Package         54 \xf8""C (min 41, max 67)");
+    CHECK_STR(find_line(&p, "Core 0"), "Core 0          52 \xf8""C");
+    CHECK_STR(find_line(&p, "TjMax"), "TjMax           100 \xf8""C");
+    CHECK_STR(find_line(&p, "Effective"), "Effective       measuring...");
+    CHECK_STR(find_line(&p, "Base (TSC)"), "Base (TSC)      3.70 GHz");
+    CHECK_EQ(count_style(&p, STYLE_GRAPH), 4);  // temperature graph only
+    for (size_t i = 0; i < p.count; i++)
+        if (p.lines[i].style == STYLE_GRAPH)
+            CHECK_EQ((uint8_t)p.lines[i].text[0], 60);
+    CHECK_STR(find_line(&p, "                last 2"), "                last 2 minutes, 20-100 \xf8""C");
+
+    s.khz = 4650000;
+    s.max_khz = 4700000;
+    hist_push(&s.clock, 4650);
+    s.tjmax_assumed = true;
+    s.core_ok = false;  // a bad reading this second
+    tab_sensors_build(&p, &s);
+    CHECK_STR(find_line(&p, "Effective"), "Effective       4.65 GHz (max 4.70 GHz)");
+    CHECK_STR(find_line(&p, "Core 0"), "Core 0          no reading");
+    CHECK_STR(find_line(&p, "TjMax"), "TjMax           100 \xf8""C (assumed)");
+    CHECK_EQ(count_style(&p, STYLE_GRAPH), 8);
+    CHECK_STR(find_line(&p, "                last 2 minutes, 0"), "                last 2 minutes, 0-5.0 GHz");
+
+    // AMD: one Tctl reading with tenths.
+    memset(&s, 0, sizeof s);
+    s.kind = SENS_AMD_SMN;
+    s.has_pkg = true;
+    s.pkg_ok = true;
+    s.pkg_mc = 54125;
+    s.have_range = true;
+    s.min_mc = 40000;
+    s.max_mc = 61875;
+    tab_sensors_build(&p, &s);
+    CHECK_STR(find_line(&p, "Tctl"), "Tctl            54.1 \xf8""C (min 40.0, max 61.8)");
+    CHECK_EQ(count_prefix(&p, "Core 0"), 0);
+    CHECK_EQ(count_prefix(&p, "TjMax"), 0);
+}
+
 int main(void) {
+    test_sensors();
     test_storage();
     test_log();
     test_fw_monitor();

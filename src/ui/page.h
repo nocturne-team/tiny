@@ -8,7 +8,8 @@
 #define PAGE_KEY_WIDTH 16   // page_kv key column: 15 chars + 1 space
 
 // STYLE_ART lines hold one byte: the 1-based row of the About art to draw.
-enum line_style { STYLE_TEXT, STYLE_HEAD, STYLE_DIM, STYLE_WARN, STYLE_ART };
+// STYLE_GRAPH lines hold a count byte, then that many braille patterns.
+enum line_style { STYLE_TEXT, STYLE_HEAD, STYLE_DIM, STYLE_WARN, STYLE_ART, STYLE_GRAPH };
 
 struct line {
     uint8_t style;
@@ -34,6 +35,8 @@ void page_add(struct page *p, enum line_style style, const char *fmt, ...) __att
 void page_kv(struct page *p, const char *key, const char *fmt, ...) __attribute__((format(printf, 3, 4)));
 // Lays words out in the value column, wrapping at `width` total columns.
 void page_wrap_words(struct page *p, const char *key, const char *const *words, size_t n, size_t width);
+// One line of braille cells (at most PAGE_LINE_LEN - 1).
+void page_graph(struct page *p, const uint8_t *cells, size_t n);
 void page_scroll(struct page *p, long delta, size_t visible);
 void page_scroll_to(struct page *p, bool end, size_t visible);
 // True when the last line is on screen.

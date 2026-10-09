@@ -21,7 +21,7 @@ own so it can be tried before the next one.
 2. **Storage page** (done). NVMe and AHCI/SATA drives: model, serial, firmware,
    capacity, and the drive's SMART health (NVMe health log; ATA SMART status and
    key attributes). Read-only: tiny never writes to a disk.
-3. **Temperatures and clocks.** Live CPU package/core temperature and effective
+3. **Temperatures and clocks** (done, Sensors tab). Live CPU package/core temperature and effective
    clock (Intel thermal MSRs + APERF/MPERF; AMD equivalents), refreshed about once
    a second, with a small braille history graph.
 

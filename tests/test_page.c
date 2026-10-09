@@ -93,7 +93,24 @@ static void test_wrap(void) {
     expect_kv(p.lines[0].text, "", "averyver");
 }
 
+static void test_graph(void) {
+    page_clear(&p);
+    uint8_t cells[3] = { 0x00, 0xFF, 0x40 };
+    page_graph(&p, cells, 3);
+    CHECK_EQ(p.count, 1);
+    CHECK_EQ(p.lines[0].style, STYLE_GRAPH);
+    CHECK_EQ((uint8_t)p.lines[0].text[0], 3);
+    CHECK_EQ((uint8_t)p.lines[0].text[1], 0x00);  // a zero pattern is kept
+    CHECK_EQ((uint8_t)p.lines[0].text[2], 0xFF);
+    CHECK_EQ((uint8_t)p.lines[0].text[3], 0x40);
+
+    uint8_t wide[200] = { 0 };
+    page_graph(&p, wide, sizeof wide);  // cut to fit the line
+    CHECK_EQ((uint8_t)p.lines[1].text[0], PAGE_LINE_LEN - 1);
+}
+
 int main(void) {
+    test_graph();
     test_add_and_kv();
     test_long_value();
     test_overflow();

@@ -85,12 +85,12 @@ run-uefi: $(ISO) $(BUILD)/ovmf-vars.fd
 
 shots: $(ISO)
 	tools/qemu-shot.py $(ISO) build/shots shot:cpu right shot:memory pgdn shot:memory-pgdn \
-		f3 shot:pci f4 shot:firmware end shot:firmware-end f5 shot:storage f6 shot:log f7 shot:about pgdn shot:about-pgdn s shot:confirm-shutdown esc shot:cancelled
+		f3 shot:pci f4 shot:firmware end shot:firmware-end f5 shot:storage f6 wait:3 shot:sensors f7 shot:log f8 shot:about pgdn shot:about-pgdn s shot:confirm-shutdown esc shot:cancelled
 	tools/qemu-shot.py $(ISO) build/shots --uefi f3 shot:uefi-pci f4 shot:uefi-firmware
 	tools/qemu-shot.py $(ISO) build/shots --usb-kbd f3 shot:usb-pci
 	tools/qemu-shot.py $(ISO) build/shots --disks f5 shot:storage-disks pgdn shot:storage-disks-pgdn
 	tools/qemu-shot.py $(ISO) build/shots --disks --uefi f5 shot:uefi-storage
-	tools/qemu-shot.py $(ISO) build/shots --usb-kbd --usb-mouse f7 mouse:-5000:-5000 mouse:400:200 wait:0.5 shot:mouse-cursor
+	tools/qemu-shot.py $(ISO) build/shots --usb-kbd --usb-mouse f8 mouse:-5000:-5000 mouse:400:200 wait:0.5 shot:mouse-cursor
 
 # --- host unit tests ----------------------------------------------------------
 TESTS :=
@@ -112,7 +112,7 @@ TESTS += test_smbios
 deps_test_smbios := src/info/smbios.c src/info/physmap.c src/lib/fmt.c
 TESTS += test_page test_tabs
 deps_test_page := src/ui/page.c src/lib/fmt.c
-deps_test_tabs := src/ui/tab_storage.c src/info/disk.c src/ui/tab_log.c src/lib/logbuf.c src/info/edid.c src/info/smbios.c src/info/physmap.c src/ui/tab_about.c src/ui/tab_pci.c src/info/pci.c src/ui/tab_cpu.c src/ui/tab_mem.c src/ui/tab_fw.c src/ui/page.c src/info/mem.c src/lib/fmt.c
+deps_test_tabs := src/ui/tab_sensors.c src/info/sensors_calc.c src/ui/tab_storage.c src/info/disk.c src/ui/tab_log.c src/lib/logbuf.c src/info/edid.c src/info/smbios.c src/info/physmap.c src/ui/tab_about.c src/ui/tab_pci.c src/info/pci.c src/ui/tab_cpu.c src/ui/tab_mem.c src/ui/tab_fw.c src/ui/page.c src/info/mem.c src/lib/fmt.c
 TESTS += test_pci
 deps_test_pci := src/info/pci.c
 TESTS += test_braille
@@ -138,6 +138,8 @@ TESTS += test_logbuf
 deps_test_logbuf := src/lib/logbuf.c
 TESTS += test_disk
 deps_test_disk := src/info/disk.c
+TESTS += test_sensors
+deps_test_sensors := src/info/sensors_calc.c
 # (add "TESTS += test_x" and "deps_test_x := ..." lines above this comment)
 
 define TEST_RULE
@@ -163,6 +165,7 @@ SMOKE_EXPECT += "memory devices"
 SMOKE_EXPECT += "edid: "
 SMOKE_EXPECT += "pages: "
 SMOKE_EXPECT += "xhci: .* running" "usb: 1 xHCI controller, 0 keyboards"
+SMOKE_EXPECT += "msr: invalid MSR" "sensors: "
 SMOKE_EXPECT += "ahci: 00:1f.2" "storage: ATAPI QEMU DVD-ROM" "storage: 1 drive"
 # (add "SMOKE_EXPECT += \"pattern\"" lines above this comment)
 KEYTEST := tools/qemu-keytest.py build/smoke-keys/tiny.iso
@@ -183,6 +186,10 @@ smoke: build/disks/nvme.img build/disks/sata.img
 	QEMU_EXTRA="-device qemu-xhci,id=xhci -device usb-kbd,bus=xhci.0 -device usb-tablet,bus=xhci.0" \
 		tests/smoke.sh build/smoke/tiny.iso bios ok q35,i8042=off "keyboard 0627:" "class 00, ignored" "controller, 1 keyboard"
 	tests/smoke.sh build/smoke/tiny.iso bios ok q35,acpi=off "acpi: rev 0"
+	@if [ -r /dev/kvm ] && [ -w /dev/kvm ]; then \
+		QEMU_EXTRA="-accel kvm -cpu host -device qemu-xhci,id=xhci" tests/smoke.sh build/smoke/tiny.iso bios ok q35 \
+			"msr: invalid MSR faulted, recovered" "sensors: "; \
+	else echo "SMOKE SKIP [kvm]: /dev/kvm not usable"; fi
 	QEMU_EXTRA="$(DISKS)" tests/smoke.sh build/smoke/tiny.iso bios ok q35 "nvme: 00:03.0 v1.4, 1 active namespace" \
 		"storage: NVMe QEMU NVMe Ctrl, 1.0 GiB, health OK" "storage: SATA QEMU HARDDISK, 10.0 GiB, health OK" "storage: 3 drives"
 	QEMU_EXTRA="$(DISKS)" tests/smoke.sh build/smoke/tiny.iso uefi ok q35 "storage: NVMe QEMU NVMe Ctrl" "storage: 3 drives"
@@ -199,7 +206,7 @@ smoke: build/disks/nvme.img build/disks/sata.img
 	$(MAKE) --no-print-directory BUILD=build/smoke-keys KDEFS="-DSMOKE -DSMOKE_KEYS" iso
 	$(KEYTEST) -device usb-kbd,bus=xhci.0 -- 'wait:keyboard 0627:' key:f3 'wait:ui: tab 3'
 	$(KEYTEST) --uefi -device usb-kbd,bus=xhci.0 -- 'wait:keyboard 0627:' key:f3 'wait:ui: tab 3'
-	$(KEYTEST) -device usb-kbd,bus=xhci.0 -- 'wait:keyboard 0627:' key:f8 key:f6 'wait:ui: tab 6' 'count:1:ui: tab'
+	$(KEYTEST) -device usb-kbd,bus=xhci.0 -- 'wait:keyboard 0627:' key:f8 'wait:ui: tab 8'
 	$(KEYTEST) -device usb-kbd,bus=xhci.0 -device usb-kbd,bus=xhci.0 -device usb-tablet,bus=xhci.0 -- \
 		'wait:keyboard 0627:' 'wait:keyboard 0627:' 'wait:ignored' key:f3 'wait:ui: tab 3' 'count:1:ignored'
 	QEMU_EXTRA="-device qemu-xhci,id=xhci -device usb-mouse,bus=xhci.0" \

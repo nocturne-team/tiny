@@ -104,3 +104,14 @@ void page_scroll_to(struct page *p, bool end, size_t visible) {
 bool page_at_end(const struct page *p, size_t visible) {
     return p->scroll >= max_scroll(p, visible);
 }
+
+void page_graph(struct page *p, const uint8_t *cells, size_t n) {
+    struct line *l = next_line(p);
+    if (!l)
+        return;
+    if (n > PAGE_LINE_LEN - 1)
+        n = PAGE_LINE_LEN - 1;
+    l->style = STYLE_GRAPH;
+    l->text[0] = (char)n;
+    memcpy(l->text + 1, cells, n);
+}
