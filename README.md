@@ -11,10 +11,15 @@ ACPI tables, RTC). It boots from one ISO on BIOS and UEFI machines via
 
 | Key | Action |
 |---|---|
-| ← / → or F1–F5 | switch tab (CPU, Memory, PCI, Firmware, About) |
+| ← / → or F1–F6 | switch tab (CPU, Memory, PCI, Firmware, Log, About) |
 | ↑ / ↓, PgUp / PgDn, Home / End | scroll |
 | R, then R again | reboot |
 | S, then S again | shut down (ACPI S5) |
+
+The **Log** tab shows everything tiny logged (the same lines as the serial port,
+with timestamps), so on a machine without a serial port you can still see why a
+controller or device didn't come up. Problem lines are shown in red, and the
+view follows new lines while it is scrolled to the bottom.
 
 A USB mouse works too: the wheel scrolls, and clicking a tab label switches to
 it. The pointer is a highlighted cell that appears when the mouse moves.
@@ -58,6 +63,7 @@ Boot from it in BIOS/CSM or UEFI mode. Secure Boot must be off.
 - `src/boot.c`: Limine requests
 - `src/info/`: hardware probing and table parsing
 - `src/ui/`: pages, tabs and the main loop
+- `src/lib/`: formatting, serial + log buffer, command line
 - `src/gfx/`: framebuffer text grid
 - `src/input/`: PS/2 backend and the input front
 - `src/usb/`: xHCI driver, device enumeration, hubs, HID boot keyboard

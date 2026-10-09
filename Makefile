@@ -85,10 +85,10 @@ run-uefi: $(ISO) $(BUILD)/ovmf-vars.fd
 
 shots: $(ISO)
 	tools/qemu-shot.py $(ISO) build/shots shot:cpu right shot:memory pgdn shot:memory-pgdn \
-		f3 shot:pci f4 shot:firmware end shot:firmware-end f5 shot:about pgdn shot:about-pgdn s shot:confirm-shutdown esc shot:cancelled
+		f3 shot:pci f4 shot:firmware end shot:firmware-end f5 shot:log f6 shot:about pgdn shot:about-pgdn s shot:confirm-shutdown esc shot:cancelled
 	tools/qemu-shot.py $(ISO) build/shots --uefi f3 shot:uefi-pci f4 shot:uefi-firmware
 	tools/qemu-shot.py $(ISO) build/shots --usb-kbd f3 shot:usb-pci
-	tools/qemu-shot.py $(ISO) build/shots --usb-kbd --usb-mouse f5 mouse:-5000:-5000 mouse:400:200 wait:0.5 shot:mouse-cursor
+	tools/qemu-shot.py $(ISO) build/shots --usb-kbd --usb-mouse f6 mouse:-5000:-5000 mouse:400:200 wait:0.5 shot:mouse-cursor
 
 # --- host unit tests ----------------------------------------------------------
 TESTS :=
@@ -110,7 +110,7 @@ TESTS += test_smbios
 deps_test_smbios := src/info/smbios.c src/info/physmap.c src/lib/fmt.c
 TESTS += test_page test_tabs
 deps_test_page := src/ui/page.c src/lib/fmt.c
-deps_test_tabs := src/info/edid.c src/info/smbios.c src/info/physmap.c src/ui/tab_about.c src/ui/tab_pci.c src/info/pci.c src/ui/tab_cpu.c src/ui/tab_mem.c src/ui/tab_fw.c src/ui/page.c src/info/mem.c src/lib/fmt.c
+deps_test_tabs := src/ui/tab_log.c src/lib/logbuf.c src/info/edid.c src/info/smbios.c src/info/physmap.c src/ui/tab_about.c src/ui/tab_pci.c src/info/pci.c src/ui/tab_cpu.c src/ui/tab_mem.c src/ui/tab_fw.c src/ui/page.c src/info/mem.c src/lib/fmt.c
 TESTS += test_pci
 deps_test_pci := src/info/pci.c
 TESTS += test_braille
@@ -132,6 +132,8 @@ deps_test_cmdline := src/lib/cmdline.c
 TESTS += test_hid_mouse test_pointer
 deps_test_hid_mouse := src/usb/hid_mouse.c
 deps_test_pointer := src/ui/pointer.c src/lib/fmt.c
+TESTS += test_logbuf
+deps_test_logbuf := src/lib/logbuf.c
 # (add "TESTS += test_x" and "deps_test_x := ..." lines above this comment)
 
 define TEST_RULE
@@ -181,6 +183,7 @@ smoke:
 	$(MAKE) --no-print-directory BUILD=build/smoke-keys KDEFS="-DSMOKE -DSMOKE_KEYS" iso
 	$(KEYTEST) -device usb-kbd,bus=xhci.0 -- 'wait:keyboard 0627:' key:f3 'wait:ui: tab 3'
 	$(KEYTEST) --uefi -device usb-kbd,bus=xhci.0 -- 'wait:keyboard 0627:' key:f3 'wait:ui: tab 3'
+	$(KEYTEST) -device usb-kbd,bus=xhci.0 -- 'wait:keyboard 0627:' key:f8 key:f6 'wait:ui: tab 6' 'count:1:ui: tab'
 	$(KEYTEST) -device usb-kbd,bus=xhci.0 -device usb-kbd,bus=xhci.0 -device usb-tablet,bus=xhci.0 -- \
 		'wait:keyboard 0627:' 'wait:keyboard 0627:' 'wait:ignored' key:f3 'wait:ui: tab 3' 'count:1:ignored'
 	QEMU_EXTRA="-device qemu-xhci,id=xhci -device usb-mouse,bus=xhci.0" \

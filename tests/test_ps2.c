@@ -47,10 +47,13 @@ int main(void) {
     CHECK_EQ(ev[4].key, KEY_ENTER);
     CHECK_EQ(ev[5].key, KEY_ENTER);  // keypad enter
 
-    FEED(0x3E, 0x3F);  // F4, F5
-    CHECK_EQ(count, 2);
+    FEED(0x3E, 0x3F, 0x40, 0x41, 0x42);  // F4-F8
+    CHECK_EQ(count, 5);
     CHECK_EQ(ev[0].key, KEY_F4);
     CHECK_EQ(ev[1].key, KEY_F5);
+    CHECK_EQ(ev[2].key, KEY_F6);
+    CHECK_EQ(ev[3].key, KEY_F7);
+    CHECK_EQ(ev[4].key, KEY_F8);
 
     FEED(0x13, 0x93, 0x1F, 0x02, 0x0B);  // r press, r release, s, 1, 0
     CHECK_EQ(count, 4);

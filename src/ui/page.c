@@ -100,3 +100,7 @@ void page_scroll(struct page *p, long delta, size_t visible) {
 void page_scroll_to(struct page *p, bool end, size_t visible) {
     p->scroll = end ? max_scroll(p, visible) : 0;
 }
+
+bool page_at_end(const struct page *p, size_t visible) {
+    return p->scroll >= max_scroll(p, visible);
+}

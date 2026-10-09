@@ -49,7 +49,8 @@ int main(void) {
         { 0x1D, KEY_CHAR, 'z' }, { 0x1E, KEY_CHAR, '1' }, { 0x27, KEY_CHAR, '0' },
         { 0x2C, KEY_CHAR, ' ' }, { 0x28, KEY_ENTER, 0 }, { 0x58, KEY_ENTER, 0 },
         { 0x29, KEY_ESC, 0 }, { 0x3A, KEY_F1, 0 }, { 0x3B, KEY_F2, 0 }, { 0x3C, KEY_F3, 0 },
-        { 0x3D, KEY_F4, 0 }, { 0x3E, KEY_F5, 0 }, { 0x4A, KEY_HOME, 0 }, { 0x4B, KEY_PGUP, 0 },
+        { 0x3D, KEY_F4, 0 }, { 0x3E, KEY_F5, 0 }, { 0x3F, KEY_F6, 0 }, { 0x40, KEY_F7, 0 }, { 0x41, KEY_F8, 0 },
+        { 0x4A, KEY_HOME, 0 }, { 0x4B, KEY_PGUP, 0 },
         { 0x4D, KEY_END, 0 }, { 0x4E, KEY_PGDN, 0 }, { 0x4F, KEY_RIGHT, 0 },
         { 0x50, KEY_LEFT, 0 }, { 0x51, KEY_DOWN, 0 }, { 0x52, KEY_UP, 0 },
     };
@@ -60,9 +61,9 @@ int main(void) {
         CHECK_EQ(ev[0].ch, map[i].ch);
     }
 
-    // Unmapped usages (F6, Caps Lock) and error codes 2-3 give nothing and never repeat.
+    // Unmapped usages (F12, Caps Lock) and error codes 2-3 give nothing and never repeat.
     reset();
-    CHECK_EQ(keys(0, 0x3F, 0x39, 0x02), 0);
+    CHECK_EQ(keys(0, 0x45, 0x39, 0x02), 0);
     CHECK(!hid_kbd_tick(&k, 10000, &e));
 
     // The modifier byte is ignored: Shift+A is still 'a'.

@@ -10,6 +10,7 @@
 #include "input/input.h"
 #include "lib/cmdline.h"
 #include "lib/fmt.h"
+#include "lib/logbuf.h"
 #include "lib/serial.h"
 #include "mm/pages.h"
 #include "power.h"
@@ -21,7 +22,17 @@
 static struct cpu_info cpu;
 static struct fw_info fw;
 static struct pci_list pci;
-static struct page pages[5];
+static struct page pages[6];
+static uint64_t log_seq;
+
+static bool log_update(struct page *p) {
+    const struct logbuf *lb = klog_buffer();
+    if (lb->seq == log_seq)
+        return false;
+    log_seq = lb->seq;
+    tab_log_build(p, lb);
+    return true;
+}
 
 void kmain(void) {
     serial_init();
@@ -72,8 +83,11 @@ void kmain(void) {
     tab_mem_build(&pages[1], bootinfo.memmap, &fw.smbios);
     tab_pci_build(&pages[2], &pci);
     tab_fw_build(&pages[3], &fw);
-    tab_about_build(&pages[4]);
+    pages[4].update = log_update;
+    pages[4].follow = true;
+    log_update(&pages[4]);
+    tab_about_build(&pages[5]);
     klog("PROBE OK");
 
-    ui_run(pages, 5);
+    ui_run(pages, 6);
 }

@@ -15,7 +15,7 @@ own so it can be tried before the next one.
 
 ## Next (in order)
 
-1. **Log page.** The kernel log (everything `klog` printed, with timestamps) on
+1. **Log page** (done). The kernel log (everything `klog` printed, with timestamps) on
    its own tab, so real hardware without a serial port can still show why
    something didn't come up. Follows new lines while scrolled to the bottom.
 2. **Storage page.** NVMe and AHCI/SATA drives: model, serial, firmware,

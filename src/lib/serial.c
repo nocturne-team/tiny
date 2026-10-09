@@ -2,10 +2,13 @@
 #include "arch/x86.h"
 #include <stdbool.h>
 #include <stdarg.h>
+#include "info/tsc.h"
 #include "lib/fmt.h"
+#include "lib/logbuf.h"
 
 #define COM1 0x3F8
 
+static struct logbuf klog_buf;
 static bool dead;  // no UART here: drop output instead of waiting on it
 
 void serial_init(void) {
@@ -48,4 +51,9 @@ void klog(const char *fmt, ...) {
     va_end(ap);
     serial_write(buf);
     serial_write("\n");
+    logbuf_add(&klog_buf, tsc_ms(), buf);
+}
+
+const struct logbuf *klog_buffer(void) {
+    return &klog_buf;
 }

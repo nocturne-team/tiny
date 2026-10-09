@@ -20,6 +20,10 @@ struct page {
     size_t count;
     size_t scroll;    // index of the first visible line
     bool truncated;   // lines were dropped; the last line says so
+    // Optional, for live pages: rebuilds the page when its data changed and
+    // returns true then. The UI keeps the scroll position across rebuilds.
+    bool (*update)(struct page *p);
+    bool follow;      // opens at the end and stays there while scrolled to the end
     struct line lines[PAGE_MAX_LINES];
 };
 
@@ -32,3 +36,5 @@ void page_kv(struct page *p, const char *key, const char *fmt, ...) __attribute_
 void page_wrap_words(struct page *p, const char *key, const char *const *words, size_t n, size_t width);
 void page_scroll(struct page *p, long delta, size_t visible);
 void page_scroll_to(struct page *p, bool end, size_t visible);
+// True when the last line is on screen.
+bool page_at_end(const struct page *p, size_t visible);

@@ -64,6 +64,14 @@ static void test_scroll(void) {
     CHECK_EQ(p.scroll, 0);
     page_scroll(&p, 5, 20);  // fits on screen: never scrolls
     CHECK_EQ(p.scroll, 0);
+
+    CHECK(!page_at_end(&p, 4));
+    page_scroll(&p, 5, 4);
+    CHECK(!page_at_end(&p, 4));
+    page_scroll(&p, 1, 4);
+    CHECK(page_at_end(&p, 4));
+    page_scroll_to(&p, false, 20);
+    CHECK(page_at_end(&p, 20));  // everything fits
 }
 
 static void test_wrap(void) {

@@ -2,6 +2,7 @@
 #include "info/cpu.h"
 #include "info/fw.h"
 #include "info/pci.h"
+#include "lib/logbuf.h"
 #include "ui/about_art.h"
 #include "ui/tabs.h"
 
@@ -214,7 +215,33 @@ static void test_fw_monitor(void) {
     CHECK_STR(find_line(&p, "EDID") + 16, "version 1.4 (bad csum)");
 }
 
+static void test_log(void) {
+    static struct logbuf lb;
+    memset(&lb, 0, sizeof lb);
+    tab_log_build(&p, &lb);
+    CHECK_STR(p.title, "Log");
+    CHECK_STR(find_line(&p, "Kernel log"), "Kernel log (0 lines)");
+
+    logbuf_add(&lb, 0, "tiny: booting");
+    logbuf_add(&lb, 12345, "usb: port 5 HS keyboard 0627:0001");
+    logbuf_add(&lb, 99999999, "xhci: 00:04.0 command timeout");
+    tab_log_build(&p, &lb);
+    CHECK_STR(find_line(&p, "Kernel log"), "Kernel log (3 lines)");
+    CHECK_STR(find_line(&p, "    0.000"), "    0.000  tiny: booting");
+    CHECK_STR(find_line(&p, "   12.345"), "   12.345  usb: port 5 HS keyboard 0627:0001");
+    CHECK_STR(find_line(&p, "99999.999"), "99999.999  xhci: 00:04.0 command timeout");
+    CHECK_EQ(count_style(&p, STYLE_WARN), 1);  // the timeout line stands out
+    CHECK_EQ(p.lines[p.count - 1].style, STYLE_WARN);
+
+    for (int i = 0; i < LOGBUF_LINES; i++)
+        logbuf_add(&lb, 1, "filler");
+    tab_log_build(&p, &lb);
+    CHECK_STR(find_line(&p, "Kernel log"), "Kernel log (256 lines, 3 older dropped)");
+    CHECK(!p.truncated);
+}
+
 int main(void) {
+    test_log();
     test_fw_monitor();
     test_about();
     test_pci();

@@ -15,3 +15,5 @@ void tab_mem_build(struct page *p, const struct limine_memmap_response *map, con
 void tab_pci_build(struct page *p, const struct pci_list *l);
 void tab_fw_build(struct page *p, const struct fw_info *f);
 void tab_about_build(struct page *p);
+struct logbuf;
+void tab_log_build(struct page *p, const struct logbuf *lb);

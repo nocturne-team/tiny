@@ -33,14 +33,13 @@
 #define G_UP 0x18
 #define G_DN 0x19
 
-#define TABS_END_X 56  // tab labels end before this column; the clock may use the rest
-
 static struct page *pages;
 static size_t page_count, cur;
 static char pending;  // 'r' or 's' while waiting for confirmation
 static int cols, rows;
 static struct pointer ptr;
-static const char *titles[5];
+static const char *titles[UI_MAX_PAGES];
+static int tabs_end;  // first column after the tab labels; the clock may use the rest
 static uint8_t last_buttons;
 
 static size_t visible(void) {
@@ -78,13 +77,14 @@ static void draw_frame(void) {
 }
 
 static void draw_tabs(void) {
-    gfx_fill(1, 1, TABS_END_X - 1, 1, ' ', A_TEXT);
+    gfx_fill(1, 1, cols - 2, 1, ' ', A_TEXT);
     int x = 2;
     for (size_t i = 0; i < page_count; i++) {
         char label[24];
         ksnprintf(label, sizeof label, " F%zu %s ", i + 1, pages[i].title);
         x += gfx_puts(x, 1, label, i == cur ? A_TAB_SEL : A_TEXT, cols - 3 - x) + 1;
     }
+    tabs_end = x + 1;
 }
 
 static void draw_clock(void) {
@@ -100,8 +100,10 @@ static void draw_clock(void) {
     else
         ksnprintf(buf, sizeof buf, "up %s", up);
 
-    int avail = cols - 2 - TABS_END_X;
-    gfx_fill(TABS_END_X, 1, avail, 1, ' ', A_TEXT);
+    int avail = cols - 2 - tabs_end;
+    if (avail <= 0)
+        return;
+    gfx_fill(tabs_end, 1, avail, 1, ' ', A_TEXT);
     int len = (int)strlen(buf);
     if (len > avail && buf[4] == '-') {  // narrow screen: drop the date
         memmove(buf, buf + 11, strlen(buf + 11) + 1);
@@ -135,9 +137,11 @@ static void draw_content(void) {
 }
 
 static void draw_footer(void) {
-    const char *msg = cols >= 72
-        ? "\x1b\x1a/F1-F5 tab  \x18\x19 PgUp/PgDn Home/End scroll  R reboot  S shut down"
-        : "\x1b\x1a tab  \x18\x19 scroll  R reboot  S off";
+    char keys[80];
+    ksnprintf(keys, sizeof keys,
+              "\x1b\x1a/F1-F%zu tab  \x18\x19 PgUp/PgDn Home/End scroll  R reboot  S shut down",
+              page_count);
+    const char *msg = cols >= 72 ? keys : "\x1b\x1a tab  \x18\x19 scroll  R reboot  S off";
     uint8_t attr = A_TEXT;
     if (pending == 'r') {
         msg = "Press R again to REBOOT - any other key cancels";
@@ -188,6 +192,9 @@ static void handle(const struct key_event *k) {
     case KEY_F3:
     case KEY_F4:
     case KEY_F5:
+    case KEY_F6:
+    case KEY_F7:
+    case KEY_F8:
         if ((size_t)(k->key - KEY_F1) < page_count)
             cur = (size_t)(k->key - KEY_F1);
         break;
@@ -231,13 +238,43 @@ static void handle_pointer(const struct pointer_event *e) {
     }
 }
 
+// Lets live pages rebuild themselves; true when the current page was redrawn.
+static bool update_pages(void) {
+    bool redraw = false;
+    size_t vis = visible();
+    for (size_t i = 0; i < page_count; i++) {
+        struct page *p = &pages[i];
+        if (!p->update)
+            continue;
+        size_t scroll = p->scroll;
+        bool end = p->follow && page_at_end(p, vis);
+        if (!p->update(p))
+            continue;
+        p->scroll = scroll;
+        if (end)
+            page_scroll_to(p, true, vis);
+        else
+            page_scroll(p, 0, vis);
+        if (i == cur) {
+            draw_content();
+            redraw = true;
+        }
+    }
+    return redraw;
+}
+
 void ui_run(struct page *pg, size_t count) {
     pages = pg;
     page_count = count;
     cols = gfx_cols();
     rows = gfx_rows();
-    for (size_t i = 0; i < count && i < 5; i++)
+    if (page_count > UI_MAX_PAGES)
+        page_count = UI_MAX_PAGES;
+    for (size_t i = 0; i < page_count; i++) {
         titles[i] = pg[i].title;
+        if (pg[i].follow)
+            page_scroll_to(&pg[i], true, visible());
+    }
     pointer_init(&ptr, cols, rows);
 
     draw_frame();
@@ -267,6 +304,8 @@ void ui_run(struct page *pg, size_t count) {
             handle_pointer(&pe);
             dirty = true;
         }
+        if (update_pages())
+            dirty = true;
         if (input_keyboard_changed()) {
             klog("ui: keyboard %s", input_have_keyboard() ? "found" : "missing");
             draw_footer();
