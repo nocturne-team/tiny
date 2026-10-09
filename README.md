@@ -11,31 +11,33 @@ ACPI tables, RTC). It boots from one ISO on BIOS and UEFI machines via
 
 | Key | Action |
 |---|---|
-| ← / → or F1–F11 | switch tab (CPU, Memory, PCI, USB, Firmware, Storage, Sensors, Log, About, Keys, Screen) |
+| F1–F5 | page group: System (CPU, Memory, Firmware), Devices (PCI, USB, Storage), Live (Sensors, Log), Tests (Screen, Keys), About; the same F-key again goes to the group's next page |
+| 1–9 | page within the current group |
+| ← / → | previous / next page (through all groups) |
 | ↑ / ↓, PgUp / PgDn, Home / End | scroll |
 | R, then R again | reboot |
 | S, then S again | shut down (ACPI S5) |
 
-The **PCI** tab lists every PCI function with its class and the vendor and
+The **PCI** page (Devices) lists every PCI function with its class and the vendor and
 device names from a built-in copy of [pci.ids](https://pci-ids.ucw.cz/) (all
 vendors and devices, no subsystems). The same names go to the log at boot. To
 refresh the copy, run `tools/pciids2c.py [path/to/pci.ids]` (default
 `/usr/share/hwdata/pci.ids`); it rewrites `src/info/pci_ids.c`.
 
-The **CPU** tab's Security section shows the loaded microcode revision, the
+The **CPU** page's (System) Security section shows the loaded microcode revision, the
 speculative-execution issues the CPU says it is not affected by (Intel's
 IA32_ARCH_CAPABILITIES bits; on AMD, CPUID bits plus the issues no AMD CPU has),
 and the speculation controls it offers (IBRS/IBPB, STIBP, SSBD, MD_CLEAR, ...).
 Anything not listed as unaffected may apply; with no OS running, nothing is mitigated.
 
-The **USB** tab lists each xHCI controller (version, USB 2 and USB 3 port
+The **USB** page (Devices) lists each xHCI controller (version, USB 2 and USB 3 port
 counts) and every device that answered on its ports: port, speed, vid:pid,
 class, the product name the device reports, and whether tiny uses it (keyboard,
 mouse, hub) or not. Devices that failed to come up are listed too, in red. The
 list follows plugging and unplugging. Devices behind a hub's USB 3 half or a
 second level of hubs are not seen.
 
-The **Storage** tab lists NVMe drives and SATA drives on AHCI controllers:
+The **Storage** page (Devices) lists NVMe drives and SATA drives on AHCI controllers:
 model, serial, firmware, capacity, and health from the drive's own SMART data
 (NVMe health log; ATA SMART status plus reallocated/pending/uncorrectable
 sectors, temperature and power-on hours). tiny only sends identify and
@@ -45,26 +47,26 @@ disks spin down a few seconds into boot), so however the machine is turned off
 afterwards it doesn't add to their unsafe-shutdown count. Drives behind RAID or Intel VMD controllers
 can't be seen; switch the firmware's storage mode to AHCI.
 
-The **Sensors** tab shows the CPU temperature (Intel core and package sensors
+The **Sensors** page (Live) shows the CPU temperature (Intel core and package sensors
 with TjMax; AMD Tctl) and the effective clock from APERF/MPERF, refreshed every
 second with a two-minute graph of each. Only the boot CPU is read, and tiny
 keeps it busy, so these are the readings of one loaded core. Virtual machines
 usually have no readable sensors.
 
-The **Log** tab shows everything tiny logged (the same lines as the serial port,
+The **Log** page (Live) shows everything tiny logged (the same lines as the serial port,
 with timestamps), so on a machine without a serial port you can still see why a
 controller or device didn't come up. Problem lines are shown in red, and the
 view follows new lines while it is scrolled to the bottom.
 
-The **Keys** tab is a keyboard tester. It draws a full-size keyboard (plus the
+The **Keys** page (Tests) is a keyboard tester. It draws a full-size keyboard (plus the
 ISO key next to left Shift), lights up keys while they are held and marks the
 ones that have been pressed. It counts how many are held at once (for ghosting
 and rollover; USB boot keyboards report at most 6) and lists the raw events: the
 PS/2 scancode bytes, or the USB HID usage and port. Caps, Num and Scroll Lock
 toggle the keyboard's LEDs. While it is open every key goes to the tester, so
-hold **Esc** for a second (or click another tab) to leave.
+hold **Esc** for a second (or click another page or group) to leave.
 
-The **Screen** tab is a display tester. It shows the framebuffer mode tiny
+The **Screen** page (Tests) is a display tester. It shows the framebuffer mode tiny
 got next to the monitor's preferred mode from EDID, and warns when they differ
 (the screen is then scaling, so 1-px patterns look soft). **Enter** starts the
 full-screen patterns: a test card in the style of Test Card F (colour bars, grey
@@ -73,9 +75,9 @@ and stuck pixels, backlight bleed, uniformity), red/green/blue/grey ramps
 (banding), a 1-px checkerboard (scaling blur) and a 32-px grid whose red line is
 the outermost pixel row and column (overscan cropping). Space, →, PgDn or a left
 click goes to the next pattern, Backspace, ←, PgUp or a right click back; Esc or
-Q, or stepping past the last pattern, returns to the tab.
+Q, or stepping past the last pattern, returns to the page.
 
-A USB mouse works too: the wheel scrolls, and clicking a tab label switches to
+A USB mouse works too: the wheel scrolls, and clicking a group or page label switches to
 it. The pointer is a highlighted cell that appears when the mouse moves.
 
 Input works from a PS/2 keyboard or a USB keyboard on an xHCI controller
@@ -108,7 +110,7 @@ make test       # host unit tests (gcc + ASan/UBSan)
 make smoke      # headless QEMU boots (BIOS, UEFI, panic, no-PS/2, no-ACPI, shutdown, nousb,
                 # NVMe + SATA disks)
                 # plus USB key tests driven over QMP (root port, hub, hotplug)
-make shots      # screenshots of every tab into build/shots/
+make shots      # screenshots of every page into build/shots/
 ```
 
 ## Real hardware
@@ -126,7 +128,7 @@ Boot from it in BIOS/CSM or UEFI mode. Secure Boot must be off.
 
 - `src/boot.c`: Limine requests
 - `src/info/`: hardware probing and table parsing, NVMe and AHCI identify/SMART
-- `src/ui/`: pages, tabs and the main loop
+- `src/ui/`: pages, tab groups and the main loop
 - `src/lib/`: formatting, serial + log buffer, command line
 - `src/gfx/`: framebuffer text grid, direct drawing for the screen test
 - `src/input/`: PS/2 backend and the input front

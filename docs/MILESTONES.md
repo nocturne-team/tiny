@@ -44,10 +44,12 @@ own so it can be tried before the next one.
    revision (MSR 0x8B), what the CPU says it is not affected by (Intel
    IA32_ARCH_CAPABILITIES; AMD CPUID plus Linux's AMD whitelist) and the speculation
    controls it offers.
+4. **Tab groups** (done). F1-F5 pick System, Devices, Live, Tests and About; a
+   second row holds each group's pages (1-9, or the group's F-key again).
 
 ## Medium additions (after the small ones)
 
-- **DIMM SPD over SMBus:** real part numbers, JEDEC/XMP/EXPO timings.
+- **DIMM SPD over SMBus:** a DIMMs page under System: part numbers, JEDEC/XMP/EXPO timings.
 - **HD Audio codecs:** codec IDs and which jacks are plugged in.
 - **TPM:** presence (ACPI TPM2), version, manufacturer.
 - **Network:** MAC addresses of common Intel and Realtek NICs.

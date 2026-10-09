@@ -85,17 +85,18 @@ run-uefi: $(ISO) $(BUILD)/ovmf-vars.fd
 
 shots: $(ISO)
 	tools/qemu-shot.py $(ISO) build/shots shot:cpu right shot:memory pgdn shot:memory-pgdn \
-		f3 shot:pci f4 shot:usb f5 shot:firmware end shot:firmware-end f6 shot:storage f7 wait:3 shot:sensors f8 shot:log f9 shot:about pgdn shot:about-pgdn s shot:confirm-shutdown esc shot:cancelled
-	tools/qemu-shot.py $(ISO) build/shots --uefi f3 shot:uefi-pci f5 shot:uefi-firmware
-	tools/qemu-shot.py $(ISO) build/shots --usb-kbd f3 shot:usb-pci
-	tools/qemu-shot.py $(ISO) build/shots --usb-kbd --usb-mouse f4 shot:usb-devices
-	tools/qemu-shot.py $(ISO) build/shots --disks f6 shot:storage-disks pgdn shot:storage-disks-pgdn
-	tools/qemu-shot.py $(ISO) build/shots --disks --uefi f6 shot:uefi-storage
-	tools/qemu-shot.py $(ISO) build/shots --usb-kbd f10 shot:keys a s d caps_lock \
+		right shot:firmware end shot:firmware-end f2 shot:pci 2 shot:usb 3 shot:storage \
+		f3 wait:3 shot:sensors 2 shot:log f5 shot:about pgdn shot:about-pgdn s shot:confirm-shutdown esc shot:cancelled
+	tools/qemu-shot.py $(ISO) build/shots --uefi f2 shot:uefi-pci f1 3 shot:uefi-firmware
+	tools/qemu-shot.py $(ISO) build/shots --usb-kbd f2 shot:usb-pci
+	tools/qemu-shot.py $(ISO) build/shots --usb-kbd --usb-mouse f2 2 shot:usb-devices
+	tools/qemu-shot.py $(ISO) build/shots --disks f2 3 shot:storage-disks pgdn shot:storage-disks-pgdn
+	tools/qemu-shot.py $(ISO) build/shots --disks --uefi f2 3 shot:uefi-storage
+	tools/qemu-shot.py $(ISO) build/shots --usb-kbd f4 f4 shot:keys a s d caps_lock \
 		down:shift down:k down:l wait:0.5 shot:keys-held up:l up:k up:shift
-	tools/qemu-shot.py $(ISO) build/shots f11 shot:screen ret wait:2 shot:screen-card right wait:0.5 shot:screen-label \
+	tools/qemu-shot.py $(ISO) build/shots f4 shot:screen ret wait:2 shot:screen-card right wait:0.5 shot:screen-label \
 		right right right right right right wait:2 shot:screen-gradients right right wait:2 shot:screen-grid esc wait:0.5 shot:screen-back
-	tools/qemu-shot.py $(ISO) build/shots --usb-kbd --usb-mouse f9 mouse:-5000:-5000 mouse:400:200 wait:0.5 shot:mouse-cursor
+	tools/qemu-shot.py $(ISO) build/shots --usb-kbd --usb-mouse f5 mouse:-5000:-5000 mouse:400:200 wait:0.5 shot:mouse-cursor
 
 # --- host unit tests ----------------------------------------------------------
 TESTS :=
