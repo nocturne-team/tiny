@@ -20,6 +20,3 @@ void pointer_init(struct pointer *p, int cols, int rows);
 bool pointer_move(struct pointer *p, int dx, int dy, int cols, int rows);
 // Lines to scroll for a wheel delta (wheel up = towards the top = negative).
 long pointer_wheel_lines(int wheel);
-// Index of the tab whose label covers column x of the tab row, or -1. Labels are
-// " F<n> <title> " from column 2 with one blank column between them, as draw_tabs draws them.
-int pointer_tab_at(const char *const *titles, size_t n, int x);

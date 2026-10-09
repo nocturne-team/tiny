@@ -35,13 +35,20 @@
 #define G_UP 0x18
 #define G_DN 0x19
 
+#define CONTENT_Y 4  // first content row: row 1 groups, row 2 sub-tabs, row 3 the rule
+
 static struct page *pages;
 static size_t page_count;
-static struct ui_nav nav;  // current and previous tab, pending R/S confirmation
+static const struct ui_group *groups;
+static size_t group_count;
+static uint8_t last_page[UI_MAX_GROUPS];  // the page each group showed last
+static struct ui_nav nav;  // current and previous page, pending R/S confirmation
 static int cols, rows;
 static struct pointer ptr;
-static const char *titles[UI_MAX_PAGES];
-static int tabs_end;  // first column after the tab labels; the clock may use the rest
+static char group_labels[UI_MAX_GROUPS][24], sub_labels[UI_MAX_PAGES][24];
+static const char *group_label_ptrs[UI_MAX_GROUPS], *sub_label_ptrs[UI_MAX_PAGES];
+static size_t sub_count;  // labels of the current group in sub_labels
+static int tabs_end;  // first column after the group labels; the clock may use the rest
 static uint8_t last_buttons;
 static bool farewell_on = true;
 
@@ -50,7 +57,7 @@ void ui_set_farewell(bool on) {
 }
 
 static size_t visible(void) {
-    return (size_t)(rows - 6);
+    return (size_t)(rows - 7);
 }
 
 static uint8_t style_attr(uint8_t style) {
@@ -71,11 +78,11 @@ static void hline(int y, uint8_t left, uint8_t right) {
 static void draw_frame(void) {
     gfx_fill(0, 0, cols, rows, ' ', A_TEXT);
     hline(0, G_TL, G_TR);
-    hline(2, G_LT, G_RT);
+    hline(3, G_LT, G_RT);
     hline(rows - 3, G_LT, G_RT);
     hline(rows - 1, G_BL, G_BR);
     for (int y = 1; y < rows - 1; y++) {
-        if (y == 2 || y == rows - 3)
+        if (y == 3 || y == rows - 3)
             continue;
         gfx_put(0, y, G_V, A_FRAME);
         gfx_put(cols - 1, y, G_V, A_FRAME);
@@ -83,15 +90,26 @@ static void draw_frame(void) {
     gfx_puts(2, 0, " tiny ", A_TITLE, cols - 4);
 }
 
-static void draw_tabs(void) {
-    gfx_fill(1, 1, cols - 2, 1, ' ', A_TEXT);
+// Draws `labels` from column 2 on row y, one blank column apart; `sel` highlighted.
+// Returns the first column after the last label.
+static int draw_labels(int y, const char *const *labels, size_t n, size_t sel) {
+    gfx_fill(1, y, cols - 2, 1, ' ', A_TEXT);
     int x = 2;
-    for (size_t i = 0; i < page_count; i++) {
-        char label[24];
-        ksnprintf(label, sizeof label, " F%zu %s ", i + 1, pages[i].title);
-        x += gfx_puts(x, 1, label, i == nav.cur ? A_TAB_SEL : A_TEXT, cols - 3 - x) + 1;
+    for (size_t i = 0; i < n; i++)
+        x += gfx_puts(x, y, labels[i], i == sel ? A_TAB_SEL : A_TEXT, cols - 3 - x) + 1;
+    return x;
+}
+
+static void draw_tabs(void) {
+    int gi = group_of(groups, group_count, nav.cur);
+    tabs_end = draw_labels(1, group_label_ptrs, group_count, (size_t)gi) + 1;
+    const struct ui_group *g = &groups[gi < 0 ? 0 : gi];
+    sub_count = g->count;
+    for (size_t i = 0; i < sub_count; i++) {
+        ksnprintf(sub_labels[i], sizeof sub_labels[i], " %zu %s ", i + 1, pages[g->first + i].title);
+        sub_label_ptrs[i] = sub_labels[i];
     }
-    tabs_end = x + 1;
+    draw_labels(2, sub_label_ptrs, sub_count, nav.cur - g->first);
 }
 
 static void draw_clock(void) {
@@ -124,14 +142,14 @@ static void draw_content(void) {
     struct page *p = &pages[nav.cur];
     size_t vis = visible();
     if (p->draw) {
-        gfx_fill(1, 3, cols - 2, (int)vis, ' ', A_TEXT);
-        p->draw(p, 2, 3, cols - 4, (int)vis);
-        gfx_put(cols - 1, 3, G_V, A_FRAME);
-        gfx_put(cols - 1, 3 + (int)vis - 1, G_V, A_FRAME);
+        gfx_fill(1, CONTENT_Y, cols - 2, (int)vis, ' ', A_TEXT);
+        p->draw(p, 2, CONTENT_Y, cols - 4, (int)vis);
+        gfx_put(cols - 1, CONTENT_Y, G_V, A_FRAME);
+        gfx_put(cols - 1, CONTENT_Y + (int)vis - 1, G_V, A_FRAME);
         return;
     }
     for (size_t i = 0; i < vis; i++) {
-        int y = 3 + (int)i;
+        int y = CONTENT_Y + (int)i;
         gfx_fill(1, y, cols - 2, 1, ' ', A_TEXT);
         size_t li = p->scroll + i;
         if (li >= p->count)
@@ -150,16 +168,19 @@ static void draw_content(void) {
         }
     }
     // Scroll hints in the right border.
-    gfx_put(cols - 1, 3, p->scroll > 0 ? G_UP : G_V, A_FRAME);
-    gfx_put(cols - 1, 3 + (int)vis - 1, p->scroll + vis < p->count ? G_DN : G_V, A_FRAME);
+    gfx_put(cols - 1, CONTENT_Y, p->scroll > 0 ? G_UP : G_V, A_FRAME);
+    gfx_put(cols - 1, CONTENT_Y + (int)vis - 1, p->scroll + vis < p->count ? G_DN : G_V, A_FRAME);
 }
 
 static void draw_footer(void) {
-    char keys[80];
+    char keys[96];
     ksnprintf(keys, sizeof keys,
-              "\x1b\x1a/F1-F%zu tab  \x18\x19 PgUp/PgDn Home/End scroll  R reboot  S shut down",
-              page_count);
-    const char *msg = cols >= 72 ? keys : "\x1b\x1a tab  \x18\x19 scroll  R reboot  S off";
+              "\x1b\x1a page  F1-F%zu group  1-9 sub-tab  \x18\x19 PgUp/PgDn Home/End scroll  R reboot  S shut down",
+              group_count);
+    char shortkeys[48];
+    ksnprintf(shortkeys, sizeof shortkeys, "\x1b\x1a page  F1-F%zu group  \x18\x19 scroll  R reboot  S off",
+              group_count);
+    const char *msg = cols >= 72 ? keys : shortkeys;
     uint8_t attr = A_TEXT;
     if (nav.pending == 'r') {
         msg = "Press R again to REBOOT - any other key cancels";
@@ -186,13 +207,23 @@ static void draw_all(void) {
     draw_footer();
 }
 
-static void tab_changed(void) {
-    klog("ui: tab %zu", nav.cur + 1);
+// Shows page t: remembers it as its group's page, logs it, redraws.
+static void go_to(size_t t) {
+    if (!nav_switch(&nav, pages, t))
+        return;
+    int gi = group_of(groups, group_count, t);
+    if (gi >= 0)
+        last_page[gi] = (uint8_t)t;
+    klog("ui: page %s/%s", gi >= 0 ? groups[gi].title : "?", pages[t].title);
 #ifdef SMOKE_KEYS
     // Entering a page that takes keys (key tester, screen test) keeps the test going.
     if (!pages[nav.cur].raw && !pages[nav.cur].key)
         qemu_debug_exit(0x10);
 #endif
+    draw_tabs();
+    draw_clock();
+    draw_content();
+    draw_footer();
 }
 
 static void handle(const struct key_event *k) {
@@ -215,15 +246,15 @@ static void handle(const struct key_event *k) {
 
     size_t next = nav.cur;
     size_t vis = visible();
-    long page_step = vis > 1 ? (long)vis - 1 : 1;
+    long page_step_lines = vis > 1 ? (long)vis - 1 : 1;
     struct page *p = &pages[nav.cur];
     if (p->key && p->key(p, k)) {
         draw_all();
         return;
     }
     switch (k->key) {
-    case KEY_LEFT: next = (nav.cur + page_count - 1) % page_count; break;
-    case KEY_RIGHT: next = (nav.cur + 1) % page_count; break;
+    case KEY_LEFT: next = page_step(page_count, nav.cur, -1); break;
+    case KEY_RIGHT: next = page_step(page_count, nav.cur, 1); break;
     case KEY_F1:
     case KEY_F2:
     case KEY_F3:
@@ -233,35 +264,29 @@ static void handle(const struct key_event *k) {
     case KEY_F7:
     case KEY_F8:
     case KEY_F9:
-    case KEY_F10:
-    case KEY_F11:
-        if ((size_t)(k->key - KEY_F1) < page_count)
-            next = (size_t)(k->key - KEY_F1);
+        next = group_key(groups, group_count, last_page, nav.cur, (size_t)(k->key - KEY_F1));
         break;
     case KEY_UP: page_scroll(p, -1, vis); break;
     case KEY_DOWN: page_scroll(p, 1, vis); break;
-    case KEY_PGUP: page_scroll(p, -page_step, vis); break;
-    case KEY_PGDN: page_scroll(p, page_step, vis); break;
+    case KEY_PGUP: page_scroll(p, -page_step_lines, vis); break;
+    case KEY_PGDN: page_scroll(p, page_step_lines, vis); break;
     case KEY_HOME: page_scroll_to(p, false, vis); break;
     case KEY_END: page_scroll_to(p, true, vis); break;
     case KEY_CHAR:
-        if (k->ch == 'r' || k->ch == 's')
+        if (k->ch == 'r' || k->ch == 's') {
             nav.pending = k->ch;
+        } else if (k->ch >= '1' && k->ch <= '9') {
+            long t = group_digit(groups, group_count, nav.cur, k->ch - '0');
+            if (t >= 0)
+                next = (size_t)t;
+        }
         break;
     default: break;
     }
-    if (nav_switch(&nav, pages, next))
-        tab_changed();
-    draw_tabs();
-    draw_clock();
-    draw_content();
-    draw_footer();
-}
-
-static void switch_tab(size_t t) {
-    if (!nav_switch(&nav, pages, t))
+    if (next != nav.cur) {
+        go_to(next);
         return;
-    tab_changed();
+    }
     draw_tabs();
     draw_clock();
     draw_content();
@@ -284,9 +309,14 @@ static void handle_pointer(const struct pointer_event *e) {
     }
     bool click = (e->buttons & 1) && !(prev_buttons & 1);
     if (click && ptr.y == 1) {
-        int t = pointer_tab_at(titles, page_count, ptr.x);
-        if (t >= 0)
-            switch_tab((size_t)t);
+        int gi = label_at(group_label_ptrs, group_count, ptr.x);
+        if (gi >= 0)
+            go_to(group_key(groups, group_count, last_page, nav.cur, (size_t)gi));
+    } else if (click && ptr.y == 2) {
+        int si = label_at(sub_label_ptrs, sub_count, ptr.x);
+        int gi = group_of(groups, group_count, nav.cur);
+        if (si >= 0 && gi >= 0)
+            go_to(groups[gi].first + (size_t)si);
     }
 }
 
@@ -315,18 +345,21 @@ static bool update_pages(void) {
     return redraw;
 }
 
-void ui_run(struct page *pg, size_t count) {
+void ui_run(struct page *pg, size_t count, const struct ui_group *grp, size_t ngroups) {
     pages = pg;
-    page_count = count;
+    page_count = count < UI_MAX_PAGES ? count : UI_MAX_PAGES;
+    groups = grp;
+    group_count = ngroups < UI_MAX_GROUPS ? ngroups : UI_MAX_GROUPS;
     cols = gfx_cols();
     rows = gfx_rows();
-    if (page_count > UI_MAX_PAGES)
-        page_count = UI_MAX_PAGES;
-    for (size_t i = 0; i < page_count; i++) {
-        titles[i] = pg[i].title;
+    for (size_t i = 0; i < group_count; i++) {
+        ksnprintf(group_labels[i], sizeof group_labels[i], " F%zu %s ", i + 1, groups[i].title);
+        group_label_ptrs[i] = group_labels[i];
+        last_page[i] = groups[i].first;
+    }
+    for (size_t i = 0; i < page_count; i++)
         if (pg[i].follow)
             page_scroll_to(&pg[i], true, visible());
-    }
     pointer_init(&ptr, cols, rows);
 
     draw_frame();
@@ -372,7 +405,7 @@ void ui_run(struct page *pg, size_t count) {
             dirty = true;
         if (pages[nav.cur].leave) {
             pages[nav.cur].leave = false;
-            switch_tab(nav.prev);
+            go_to(nav.prev);
             dirty = true;
         }
         if (input_keyboard_changed()) {

@@ -230,30 +230,35 @@ smoke: build/disks/nvme.img build/disks/sata.img build/disks/usb.img
 	QEMU_EXTRA="$(DISKS)" tests/smoke.sh build/smoke-safe/tiny.iso bios ok q35 "usb: disabled by command line" \
 		"storage: disabled by command line" "farewell disabled by command line"
 	$(MAKE) --no-print-directory BUILD=build/smoke-keys KDEFS="-DSMOKE -DSMOKE_KEYS" iso
-	$(KEYTEST) -device usb-kbd,bus=xhci.0 -- 'wait:keyboard 0627:' key:f3 'wait:ui: tab 3'
-	$(KEYTEST) --uefi -device usb-kbd,bus=xhci.0 -- 'wait:keyboard 0627:' key:f3 'wait:ui: tab 3'
-	$(KEYTEST) -device usb-kbd,bus=xhci.0 -- 'wait:keyboard 0627:' key:f8 'wait:ui: tab 8'
-	$(KEYTEST) -device usb-kbd,bus=xhci.0 -- 'wait:keyboard 0627:' key:f9 'wait:ui: tab 9'
-	$(KEYTEST) -device usb-kbd,bus=xhci.0 -- 'wait:keyboard 0627:' key:f10 'wait:ui: tab 10' \
+	$(KEYTEST) -device usb-kbd,bus=xhci.0 -- 'wait:keyboard 0627:' key:f2 'wait:ui: page Devices/PCI'
+	$(KEYTEST) --uefi -device usb-kbd,bus=xhci.0 -- 'wait:keyboard 0627:' key:f2 'wait:ui: page Devices/PCI'
+	$(KEYTEST) -device usb-kbd,bus=xhci.0 -- 'wait:keyboard 0627:' key:f3 'wait:ui: page Live/Sensors'
+	$(KEYTEST) -device usb-kbd,bus=xhci.0 -- 'wait:keyboard 0627:' key:f5 'wait:ui: page About/About'
+	$(KEYTEST) -device usb-kbd,bus=xhci.0 -- 'wait:keyboard 0627:' key:f1 'wait:ui: page System/Memory'
+	$(KEYTEST) -device usb-kbd,bus=xhci.0 -- 'wait:keyboard 0627:' key:3 'wait:ui: page System/Firmware'
+	$(KEYTEST) -device usb-kbd,bus=xhci.0 -- 'wait:keyboard 0627:' key:left 'wait:ui: page About/About'
+	$(KEYTEST) -device usb-kbd,bus=xhci.0 -- 'wait:keyboard 0627:' key:f4 'wait:ui: page Tests/Screen' \
+		key:f4 'wait:ui: page Tests/Keys' \
 		key:a 'wait:keys: usb \S+ press 0x04' 'wait:keys: usb \S+ release 0x04' \
 		key:shift 'wait:press 0xe1' key:ctrl+alt 'wait:press 0xe0' 'wait:press 0xe2' \
 		key:ret 'wait:press 0x28' key:caps_lock 'wait:press 0x39' \
-		hold:esc:1500 'wait:ui: tab 1\b' 'count:0:PANIC'
-	$(KEYTEST) --ps2 -- key:f10 'wait:ui: tab 10' key:a 'wait:keys: ps2 1E make 0x04' \
+		hold:esc:1500 'wait:ui: page Tests/Screen' key:f1 'wait:ui: page System/CPU' 'count:0:PANIC'
+	$(KEYTEST) --ps2 -- key:f4 'wait:ui: page Tests/Screen' key:2 'wait:ui: page Tests/Keys' \
+		key:a 'wait:keys: ps2 1E make 0x04' \
 		'wait:keys: ps2 9E break 0x04' key:up 'wait:keys: ps2 E0 48 make 0x52' \
 		key:pause 'wait:keys: ps2 E1 1D 45 E1 9D C5 make 0x48' key:caps_lock 'wait:make 0x39' \
-		hold:esc:1500 'wait:ui: tab 1\b' 'count:0:no ACK for LED'
-	$(KEYTEST) -device usb-kbd,bus=xhci.0 -- 'wait:keyboard 0627:' key:f11 'wait:ui: tab 11' \
+		hold:esc:1500 'wait:ui: page Tests/Screen' key:f1 'wait:ui: page System/CPU' 'count:0:no ACK for LED'
+	$(KEYTEST) -device usb-kbd,bus=xhci.0 -- 'wait:keyboard 0627:' key:f4 'wait:ui: page Tests/Screen' \
 		key:ret 'wait:screen: pattern 1 Test card' key:spc 'wait:screen: pattern 2 Black' key:right 'wait:pattern 3 White' \
-		key:backspace 'wait:screen: pattern 2 Black' key:esc 'wait:screen: done' key:f1 'wait:ui: tab 1\b' 'count:0:PANIC'
-	$(KEYTEST) --ps2 -- key:f11 'wait:ui: tab 11' key:ret 'wait:screen: pattern 1 Test card' \
+		key:backspace 'wait:screen: pattern 2 Black' key:esc 'wait:screen: done' key:f1 'wait:ui: page System/CPU' 'count:0:PANIC'
+	$(KEYTEST) --ps2 -- key:f4 'wait:ui: page Tests/Screen' key:ret 'wait:screen: pattern 1 Test card' \
 		key:spc key:spc key:spc key:spc key:spc key:spc key:spc key:spc key:spc 'wait:screen: pattern 10 Grid' \
-		key:spc 'wait:screen: done' key:f1 'wait:ui: tab 1\b'
+		key:spc 'wait:screen: done' key:f1 'wait:ui: page System/CPU'
 	$(KEYTEST) -device usb-kbd,bus=xhci.0 -device usb-mouse,bus=xhci.0 -- 'wait:keyboard 0627:' 'wait:mouse 0627:' \
-		key:f11 'wait:ui: tab 11' key:ret 'wait:pattern 1 Test card' click:left 'wait:pattern 2 Black' \
-		click:right 'wait:pattern 1 Test card' key:q 'wait:screen: done' key:f1 'wait:ui: tab 1\b'
+		key:f4 'wait:ui: page Tests/Screen' key:ret 'wait:pattern 1 Test card' click:left 'wait:pattern 2 Black' \
+		click:right 'wait:pattern 1 Test card' key:q 'wait:screen: done' key:f1 'wait:ui: page System/CPU'
 	$(KEYTEST) -device usb-kbd,bus=xhci.0 -device usb-kbd,bus=xhci.0 -device usb-tablet,bus=xhci.0 -- \
-		'wait:keyboard 0627:' 'wait:keyboard 0627:' 'wait:ignored' key:f3 'wait:ui: tab 3' 'count:1:ignored'
+		'wait:keyboard 0627:' 'wait:keyboard 0627:' 'wait:ignored' key:f2 'wait:ui: page Devices/PCI' 'count:1:ignored'
 	$(KEYTEST) --ps2 --exit=0 -- key:s key:s 'wait:power: ACPI S5' 'count:34:shutdown: ' \
 		'count:1:EXTREME DAMAGE SUSTAINED[\s\S]*RUNNING DIAGNOSTIC[\s\S]*ARM CORE MODULE #1[\s\S]*NO VOCAL INTERFACE[\s\S]*(DON.T WANT TO DIE[\s\S]*){3}power: shutting down'
 	$(KEYTEST) -device usb-kbd,bus=xhci.0 --exit=0 -- 'wait:keyboard 0627:' key:r key:r 'wait:power: rebooting' \
@@ -264,16 +269,18 @@ smoke: build/disks/nvme.img build/disks/sata.img build/disks/usb.img
 	QEMU_EXTRA="-device qemu-xhci,id=xhci -device usb-mouse,bus=xhci.0" \
 		tests/smoke.sh build/smoke/tiny.iso bios ok q35 "s mouse 0627:"
 	$(KEYTEST) -device usb-kbd,bus=xhci.0 -device usb-mouse,bus=xhci.0 -- 'wait:keyboard 0627:' \
-		'wait:mouse 0627:' mouse:-5000:-5000 mouse:159:18 click:left 'wait:ui: tab 3'
+		'wait:mouse 0627:' mouse:-5000:-5000 mouse:99:18 click:left 'wait:ui: page Devices/PCI'
+	$(KEYTEST) -device usb-kbd,bus=xhci.0 -device usb-mouse,bus=xhci.0 -- 'wait:keyboard 0627:' \
+		'wait:mouse 0627:' mouse:-5000:-5000 mouse:75:27 click:left 'wait:ui: page System/Memory'
 	$(KEYTEST) -- add:usb-kbd,bus=xhci.0,id=k1 'wait:keyboard 0627:' 'wait:ui: keyboard found' \
 		del:k1 'wait:disconnected' 'wait:ui: keyboard missing' \
-		add:usb-kbd,bus=xhci.0,id=k2 'wait:keyboard 0627:' 'wait:ui: keyboard found' key:f3 'wait:ui: tab 3'
+		add:usb-kbd,bus=xhci.0,id=k2 'wait:keyboard 0627:' 'wait:ui: keyboard found' key:f2 'wait:ui: page Devices/PCI'
 	$(KEYTEST) -device usb-hub,bus=xhci.0,port=1 -device usb-kbd,bus=xhci.0,port=1.1 -- \
-		'wait:hub, 8 ports' 'wait:port \d+\.1 \w+ keyboard 0627:' key:f3 'wait:ui: tab 3'
+		'wait:hub, 8 ports' 'wait:port \d+\.1 \w+ keyboard 0627:' key:f2 'wait:ui: page Devices/PCI'
 	$(KEYTEST) -device usb-hub,bus=xhci.0,port=1 -- 'wait:hub, 8 ports' \
 		add:usb-kbd,bus=xhci.0,port=1.2,id=k1 'wait:port \d+\.2 \w+ keyboard' \
 		del:k1 'wait:port \d+\.2 disconnected' \
-		add:usb-kbd,bus=xhci.0,port=1.2,id=k2 'wait:port \d+\.2 \w+ keyboard' key:f3 'wait:ui: tab 3'
+		add:usb-kbd,bus=xhci.0,port=1.2,id=k2 'wait:port \d+\.2 \w+ keyboard' key:f2 'wait:ui: page Devices/PCI'
 
 clean:
 	rm -rf build

@@ -39,17 +39,5 @@ int main(void) {
     CHECK_EQ(pointer_wheel_lines(-2), 6);
     CHECK_EQ(pointer_wheel_lines(0), 0);
 
-    // " F1 CPU " = columns 2-9, gap 10, " F2 Memory " = 11-21, gap 22, " F3 PCI " = 23-30.
-    const char *titles[] = { "CPU", "Memory", "PCI", "Firmware", "About" };
-    CHECK_EQ(pointer_tab_at(titles, 5, 1), -1);
-    CHECK_EQ(pointer_tab_at(titles, 5, 2), 0);
-    CHECK_EQ(pointer_tab_at(titles, 5, 9), 0);
-    CHECK_EQ(pointer_tab_at(titles, 5, 10), -1);
-    CHECK_EQ(pointer_tab_at(titles, 5, 11), 1);
-    CHECK_EQ(pointer_tab_at(titles, 5, 21), 1);
-    CHECK_EQ(pointer_tab_at(titles, 5, 23), 2);
-    CHECK_EQ(pointer_tab_at(titles, 5, 30), 2);
-    CHECK_EQ(pointer_tab_at(titles, 5, 200), -1);
-    CHECK_EQ(pointer_tab_at(titles, 0, 2), -1);
     TEST_MAIN_END();
 }

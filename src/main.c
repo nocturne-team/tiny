@@ -27,7 +27,7 @@ static struct fw_info fw;
 static struct pci_list pci;
 static struct storage_list storage;
 static struct sensors sensors;
-static struct page pages[11];
+static struct page pages[UI_MAX_PAGES];
 static struct usb_summary usb_sum;
 static uint32_t usb_gen;
 static uint64_t log_seq;
@@ -131,32 +131,38 @@ void kmain(void) {
     fw_probe(&fw);
     power_init(&fw.acpi);
 
+    enum { P_CPU, P_MEM, P_FW, P_PCI, P_USB, P_STORAGE, P_SENSORS, P_LOG, P_SCREEN, P_KEYS, P_ABOUT, P_COUNT };
+    static const struct ui_group groups[] = {
+        { "System", P_CPU, 3 }, { "Devices", P_PCI, 3 }, { "Live", P_SENSORS, 2 },
+        { "Tests", P_SCREEN, 2 }, { "About", P_ABOUT, 1 },
+    };
+
     size_t width = (size_t)gfx_cols() - 4;
-    tab_cpu_build(&pages[0], &cpu, width);
-    tab_mem_build(&pages[1], bootinfo.memmap, &fw.smbios);
-    tab_pci_build(&pages[2], &pci);
+    tab_cpu_build(&pages[P_CPU], &cpu, width);
+    tab_mem_build(&pages[P_MEM], bootinfo.memmap, &fw.smbios);
+    tab_fw_build(&pages[P_FW], &fw);
+    tab_pci_build(&pages[P_PCI], &pci);
     if (usb_sum.disabled || usb_sum.no_dma) {
-        tab_usb_build(&pages[3], &usb_sum);
+        tab_usb_build(&pages[P_USB], &usb_sum);
     } else {
         usb_gen = usb_generation();
         usb_summarize(&usb_sum);
-        tab_usb_build(&pages[3], &usb_sum);
-        pages[3].update = usb_update;
+        tab_usb_build(&pages[P_USB], &usb_sum);
+        pages[P_USB].update = usb_update;
     }
-    tab_fw_build(&pages[4], &fw);
-    tab_storage_build(&pages[5], &storage);
+    tab_storage_build(&pages[P_STORAGE], &storage);
     sensors_init(&sensors, &cpu);
     sensors_sample(&sensors);
     sensors_ms = tsc_ms();
-    tab_sensors_build(&pages[6], &sensors);
-    pages[6].update = sensors_update;
-    pages[7].update = log_update;
-    pages[7].follow = true;
-    log_update(&pages[7]);
-    tab_about_build(&pages[8]);
-    tab_keys_init(&pages[9]);
-    tab_screen_init(&pages[10], bootinfo.fb, fw.have_edid ? &fw.edid : NULL);
+    tab_sensors_build(&pages[P_SENSORS], &sensors);
+    pages[P_SENSORS].update = sensors_update;
+    pages[P_LOG].update = log_update;
+    pages[P_LOG].follow = true;
+    log_update(&pages[P_LOG]);
+    tab_screen_init(&pages[P_SCREEN], bootinfo.fb, fw.have_edid ? &fw.edid : NULL);
+    tab_keys_init(&pages[P_KEYS]);
+    tab_about_build(&pages[P_ABOUT]);
     klog("PROBE OK");
 
-    ui_run(pages, 11);
+    ui_run(pages, P_COUNT, groups, sizeof groups / sizeof groups[0]);
 }
