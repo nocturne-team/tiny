@@ -27,9 +27,10 @@ The **Storage** tab lists NVMe drives and SATA drives on AHCI controllers:
 model, serial, firmware, capacity, and health from the drive's own SMART data
 (NVMe health log; ATA SMART status plus reallocated/pending/uncorrectable
 sectors, temperature and power-on hours). tiny only sends identify and
-health-log commands, never reads or writes the disks' data. NVMe drives are
-given a normal shutdown afterwards, so turning the machine off from tiny doesn't
-add to their unsafe-shutdown count. Drives behind RAID or Intel VMD controllers
+health-log commands, never reads or writes the disks' data. Once they are read,
+NVMe drives get a normal shutdown and SATA drives a STANDBY IMMEDIATE (hard
+disks spin down a few seconds into boot), so however the machine is turned off
+afterwards it doesn't add to their unsafe-shutdown count. Drives behind RAID or Intel VMD controllers
 can't be seen; switch the firmware's storage mode to AHCI.
 
 The **Sensors** tab shows the CPU temperature (Intel core and package sensors

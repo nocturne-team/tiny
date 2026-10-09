@@ -27,8 +27,9 @@ own so it can be tried before the next one.
 4. **USB page** (done, F4). Every xHCI controller (version, USB 2/3 port counts)
    and every device on its ports, used or not: port, speed, vid:pid, class,
    product strings, status. Live across hotplug.
-5. **Clean drive shutdown.** ATA STANDBY IMMEDIATE before power-off, so SATA drives
-   don't count an unsafe power loss.
+5. **Clean drive shutdown** (done). ATA STANDBY IMMEDIATE right after the probe
+   (like the NVMe shutdown), so SATA drives don't count an unsafe power loss
+   however the machine is turned off.
 6. **Key tester.** A page that lights up keys as they're pressed and shows the raw
    scancode / HID usage.
 

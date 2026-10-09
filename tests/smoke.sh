@@ -4,7 +4,7 @@
 #   ok        log has "PROBE OK" and "UI READY"; exit via isa-debug-exit 0x10 (status 33)
 #   panic     log has "PANIC: #UD"; exit via isa-debug-exit 0x11 (status 35)
 #   shutdown  log has "power: ACPI S5"; QEMU powered off (status 0)
-# Every extra PATTERN must also appear in the log.
+# Every extra PATTERN must also appear in the log; a PATTERN starting with ! must not.
 #   QEMU_EXTRA (env) extra QEMU arguments; default "-device qemu-xhci,id=xhci"
 set -u
 iso=$1 fw=$2 expect=$3
@@ -49,6 +49,9 @@ grep -q "$want_text" "$log" || fail "missing '$want_text'"
 [ "$expect" != ok ] || grep -q "PROBE OK" "$log" || fail "missing 'PROBE OK'"
 [ "$expect" = panic ] || ! grep -q "PANIC" "$log" || fail "unexpected panic"
 for pat in "$@"; do
-    grep -q "$pat" "$log" || fail "missing '$pat'"
+    case $pat in
+        !*) ! grep -q "${pat#!}" "$log" || fail "unexpected '${pat#!}'" ;;
+        *)  grep -q "$pat" "$log" || fail "missing '$pat'" ;;
+    esac
 done
 echo "SMOKE OK [$fw $expect $machine]"

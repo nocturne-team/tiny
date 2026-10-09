@@ -46,7 +46,7 @@
 
 enum {
     ATA_IDENTIFY = 0xEC, ATA_IDENTIFY_PACKET = 0xA1, ATA_SMART = 0xB0,
-    SMART_READ_DATA = 0xD0, SMART_RETURN_STATUS = 0xDA,
+    SMART_READ_DATA = 0xD0, SMART_RETURN_STATUS = 0xDA, ATA_STANDBY_IMMEDIATE = 0xE0,
 };
 
 #define CMD_TIMEOUT_MS 10000   // SMART on a drive in standby may spin it up first
@@ -241,6 +241,12 @@ size_t ahci_probe(const struct pci_device *pd, struct disk_info *out, size_t max
         struct disk_info *d = &out[n];
         if (sig == SIG_ATA) {
             probe_ata(&p, d);
+            // Done with the drive: flush, park and spin down, so however the machine is
+            // turned off next it doesn't count as an unsafe power loss. Nothing is in
+            // flight afterwards, so the port can stop.
+            if (command(&p, ATA_STANDBY_IMMEDIATE, 0, 0, 0, 0, "standby"))
+                klog("ahci: %s port %u: standby", name, i);
+            stop(&p);
         } else {
             disk_init(d, DISK_ATAPI);
             if (command(&p, ATA_IDENTIFY_PACKET, 0, 0, 0, 512, "identify packet"))

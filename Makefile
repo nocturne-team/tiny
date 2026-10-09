@@ -167,7 +167,7 @@ SMOKE_EXPECT += "edid: "
 SMOKE_EXPECT += "pages: "
 SMOKE_EXPECT += "xhci: .* running" "usb: 1 xHCI controller, 0 keyboards"
 SMOKE_EXPECT += "msr: invalid MSR" "sensors: "
-SMOKE_EXPECT += "storage: probing AHCI 00:1f.2" "ahci: 00:1f.2" "storage: ATAPI QEMU DVD-ROM" "storage: 1 drive"
+SMOKE_EXPECT += "storage: probing AHCI 00:1f.2" "ahci: 00:1f.2" "storage: ATAPI QEMU DVD-ROM" "storage: 1 drive" "!: standby"
 # (add "SMOKE_EXPECT += \"pattern\"" lines above this comment)
 KEYTEST := tools/qemu-keytest.py build/smoke-keys/tiny.iso
 DISKS := -drive if=none,id=n0,format=raw,file=build/disks/nvme.img -device nvme,drive=n0,serial=NVME0001 \
@@ -195,7 +195,8 @@ smoke: build/disks/nvme.img build/disks/sata.img build/disks/usb.img
 			"msr: invalid MSR faulted, recovered" "sensors: "; \
 	else echo "SMOKE SKIP [kvm]: /dev/kvm not usable"; fi
 	QEMU_EXTRA="$(DISKS)" tests/smoke.sh build/smoke/tiny.iso bios ok q35 "nvme: 00:03.0 v1.4, 1 active namespace" \
-		"storage: NVMe QEMU NVMe Ctrl, 1.0 GiB, health OK" "storage: SATA QEMU HARDDISK, 10.0 GiB, health OK" "storage: 3 drives"
+		"storage: NVMe QEMU NVMe Ctrl, 1.0 GiB, health OK" "storage: SATA QEMU HARDDISK, 10.0 GiB, health OK" "storage: 3 drives" \
+		"ahci: 00:1f.2 port 0: standby"
 	QEMU_EXTRA="$(DISKS)" tests/smoke.sh build/smoke/tiny.iso uefi ok q35 "storage: NVMe QEMU NVMe Ctrl" "storage: 3 drives"
 	QEMU_EXTRA="-drive if=none,id=n0,format=raw,file=build/disks/nvme.img \
 		-device nvme,drive=n0,serial=NVME0001,smart_critical_warning=4" tests/smoke.sh build/smoke/tiny.iso bios ok q35 "storage: NVMe .* health FAILING"
