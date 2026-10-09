@@ -93,7 +93,7 @@ shots: $(ISO)
 	tools/qemu-shot.py $(ISO) build/shots --disks --uefi f6 shot:uefi-storage
 	tools/qemu-shot.py $(ISO) build/shots --usb-kbd f10 shot:keys a s d caps_lock \
 		down:shift down:k down:l wait:0.5 shot:keys-held up:l up:k up:shift
-	tools/qemu-shot.py $(ISO) build/shots f11 shot:screen ret wait:0.5 shot:screen-label \
+	tools/qemu-shot.py $(ISO) build/shots f11 shot:screen ret wait:2 shot:screen-card right wait:0.5 shot:screen-label \
 		right right right right right right wait:2 shot:screen-gradients right right wait:2 shot:screen-grid esc wait:0.5 shot:screen-back
 	tools/qemu-shot.py $(ISO) build/shots --usb-kbd --usb-mouse f9 mouse:-5000:-5000 mouse:400:200 wait:0.5 shot:mouse-cursor
 
@@ -238,14 +238,14 @@ smoke: build/disks/nvme.img build/disks/sata.img build/disks/usb.img
 		key:pause 'wait:keys: ps2 E1 1D 45 E1 9D C5 make 0x48' key:caps_lock 'wait:make 0x39' \
 		hold:esc:1500 'wait:ui: tab 1\b' 'count:0:no ACK for LED'
 	$(KEYTEST) -device usb-kbd,bus=xhci.0 -- 'wait:keyboard 0627:' key:f11 'wait:ui: tab 11' \
-		key:ret 'wait:screen: pattern 1 Black' key:spc 'wait:screen: pattern 2 White' key:right 'wait:pattern 3 Red' \
-		key:backspace 'wait:screen: pattern 2 White' key:esc 'wait:screen: done' key:f1 'wait:ui: tab 1\b' 'count:0:PANIC'
-	$(KEYTEST) --ps2 -- key:f11 'wait:ui: tab 11' key:ret 'wait:screen: pattern 1 Black' \
-		key:spc key:spc key:spc key:spc key:spc key:spc key:spc key:spc 'wait:screen: pattern 9 Grid' \
+		key:ret 'wait:screen: pattern 1 Test card' key:spc 'wait:screen: pattern 2 Black' key:right 'wait:pattern 3 White' \
+		key:backspace 'wait:screen: pattern 2 Black' key:esc 'wait:screen: done' key:f1 'wait:ui: tab 1\b' 'count:0:PANIC'
+	$(KEYTEST) --ps2 -- key:f11 'wait:ui: tab 11' key:ret 'wait:screen: pattern 1 Test card' \
+		key:spc key:spc key:spc key:spc key:spc key:spc key:spc key:spc key:spc 'wait:screen: pattern 10 Grid' \
 		key:spc 'wait:screen: done' key:f1 'wait:ui: tab 1\b'
 	$(KEYTEST) -device usb-kbd,bus=xhci.0 -device usb-mouse,bus=xhci.0 -- 'wait:keyboard 0627:' 'wait:mouse 0627:' \
-		key:f11 'wait:ui: tab 11' key:ret 'wait:pattern 1 Black' click:left 'wait:pattern 2 White' \
-		click:right 'wait:pattern 1 Black' key:q 'wait:screen: done' key:f1 'wait:ui: tab 1\b'
+		key:f11 'wait:ui: tab 11' key:ret 'wait:pattern 1 Test card' click:left 'wait:pattern 2 Black' \
+		click:right 'wait:pattern 1 Test card' key:q 'wait:screen: done' key:f1 'wait:ui: tab 1\b'
 	$(KEYTEST) -device usb-kbd,bus=xhci.0 -device usb-kbd,bus=xhci.0 -device usb-tablet,bus=xhci.0 -- \
 		'wait:keyboard 0627:' 'wait:keyboard 0627:' 'wait:ignored' key:f3 'wait:ui: tab 3' 'count:1:ignored'
 	QEMU_EXTRA="-device qemu-xhci,id=xhci -device usb-mouse,bus=xhci.0" \

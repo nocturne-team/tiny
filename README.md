@@ -55,7 +55,8 @@ hold **Esc** for a second (or click another tab) to leave.
 The **Screen** tab is a display tester. It shows the framebuffer mode tiny
 got next to the monitor's preferred mode from EDID, and warns when they differ
 (the screen is then scaling, so 1-px patterns look soft). **Enter** starts the
-full-screen patterns: solid black, white, red, green, blue and 50% grey (dead
+full-screen patterns: a test card in the style of Test Card F (colour bars, grey
+steps, gratings from 6 px down to 1 px, a grid and a castellated edge), solid black, white, red, green, blue and 50% grey (dead
 and stuck pixels, backlight bleed, uniformity), red/green/blue/grey ramps
 (banding), a 1-px checkerboard (scaling blur) and a 32-px grid whose red line is
 the outermost pixel row and column (overscan cropping). Space, →, PgDn or a left

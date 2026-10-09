@@ -25,6 +25,12 @@ static uint32_t pixel(uint32_t x, uint32_t y, void *ctx) {
     return screen_pixel(cur, x, y, wh[0], wh[1]);
 }
 
+// White on the card's dark centre.
+static void centre_text(const char *s, uint32_t y, uint32_t w, uint32_t scale) {
+    uint32_t tw = (uint32_t)strlen(s) * 8 * scale;
+    gfx_text_rgb(tw < w ? (w - tw) / 2 : 0, y, s, 0xFFFFFF, 0x202020);
+}
+
 static void draw_pattern(void) {
     uint32_t wh[2];
     gfx_fb_size(&wh[0], &wh[1]);
@@ -32,13 +38,19 @@ static void draw_pattern(void) {
         gfx_fill_rgb(0, 0, wh[0], wh[1], screen_pixel(cur, 0, 0, wh[0], wh[1]));
     else
         gfx_paint(pixel, wh);
+    uint32_t scale = (uint32_t)gfx_get_layout()->scale, th = 16 * scale;
+    char buf[96];
+    if (cur == 0) {  // the test card's centre: name and mode, above the crosshair
+        uint32_t y = wh[1] / 2 - wh[1] * 5 / 12 * 3 / 10;
+        ksnprintf(buf, sizeof buf, "%u x %u", wh[0], wh[1]);
+        centre_text("tiny", y, wh[0], scale);
+        centre_text(buf, y + th + th / 2, wh[0], scale);
+    }
     if (!label)
         return;
-    char buf[96];
     ksnprintf(buf, sizeof buf, " %d/%d %s  -  Space next, Backspace back, Esc leave ", cur + 1,
               SCREEN_PATTERNS, screen_pattern_name(cur));
-    uint32_t scale = (uint32_t)gfx_get_layout()->scale;
-    uint32_t tw = (uint32_t)strlen(buf) * 8 * scale, th = 16 * scale;
+    uint32_t tw = (uint32_t)strlen(buf) * 8 * scale;
     gfx_text_rgb(tw < wh[0] ? (wh[0] - tw) / 2 : 0, th < wh[1] ? (wh[1] - th) / 2 : 0, buf, 0xFFFFFF,
                  0x404040);
 }
@@ -150,6 +162,8 @@ void tab_screen_init(struct page *p, const struct limine_framebuffer *fb, const 
 
     page_blank(p);
     page_add(p, STYLE_HEAD, "Test patterns (full screen)");
+    page_kv(p, "Test card", "an overview in the style of Test Card F: colour bars, grey steps,");
+    page_kv(p, "", "gratings from 6 px to 1 px wide, a grid and a castellated edge");
     page_kv(p, "Black ... Blue", "dead (always dark) and stuck (always lit) pixels, backlight bleed");
     page_kv(p, "Grey 50%", "uniformity: clouding, darker corners, tint");
     page_kv(p, "Gradients", "red, green, blue and grey ramps: banding means fewer than 8 bits");

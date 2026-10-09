@@ -5,7 +5,7 @@
 
 // Full-screen test patterns for the Screen tab. Pure: no hardware access.
 
-#define SCREEN_PATTERNS 9
+#define SCREEN_PATTERNS 10
 
 const char *screen_pattern_name(int pattern);
 // True when every pixel of the pattern has the same colour (draw it as one fill).
