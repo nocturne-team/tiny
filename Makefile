@@ -153,6 +153,8 @@ TESTS += test_keys
 deps_test_keys := src/ui/keys_state.c src/ui/kbd_layout.c src/lib/fmt.c
 TESTS += test_screen
 deps_test_screen := src/ui/screen_test.c
+TESTS += test_pci_db
+deps_test_pci_db := src/info/pci_db.c src/info/pci_ids.c
 # (add "TESTS += test_x" and "deps_test_x := ..." lines above this comment)
 
 define TEST_RULE
@@ -173,7 +175,7 @@ SMOKE_EXPECT += "tsc: " "cpu: "
 SMOKE_EXPECT += "MiB available"
 SMOKE_EXPECT += "acpi: rev" "smbios: QEMU"
 SMOKE_EXPECT += "power: PM1a_CNT"
-SMOKE_EXPECT += "pci: "
+SMOKE_EXPECT += "pci: " "pci: 00:1f.2 8086:2922 82801IR" "devices, names from pci.ids"
 SMOKE_EXPECT += "memory devices"
 SMOKE_EXPECT += "edid: "
 SMOKE_EXPECT += "pages: "

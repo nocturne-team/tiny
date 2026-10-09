@@ -38,7 +38,8 @@ own so it can be tried before the next one.
 1. **Screen tester** (done, F11 Screen). Framebuffer mode vs. the EDID preferred
    mode, and full-screen patterns: a Test Card F-style card, solid colours, ramps, 1-px checkerboard, grid
    with a red edge.
-2. **PCI device names:** a trimmed `pci.ids` subset instead of bare IDs.
+2. **PCI device names** (done). Every vendor and device from `pci.ids` (about
+   20k devices, ~0.8 MB), generated into `src/info/pci_ids.c` by `tools/pciids2c.py`.
 3. **Microcode and mitigations:** microcode revision (MSR 0x8B) and the CPU's
    speculative-execution mitigation bits on the CPU tab.
 

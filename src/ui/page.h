@@ -3,7 +3,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define PAGE_LINE_LEN 120   // bytes per line, including the NUL
+#define PAGE_LINE_LEN 160   // bytes per line, including the NUL
 #define PAGE_MAX_LINES 300
 #define PAGE_KEY_WIDTH 16   // page_kv key column: 15 chars + 1 space
 

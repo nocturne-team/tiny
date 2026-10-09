@@ -6,6 +6,7 @@
 #include "info/fw.h"
 #include "info/mem.h"
 #include "info/pci.h"
+#include "info/pci_db.h"
 #include "info/sensors.h"
 #include "info/storage.h"
 #include "info/tsc.h"
@@ -99,7 +100,14 @@ void kmain(void) {
         klog("mem: no memory map from bootloader");
     }
     pci_scan(pci_config_read, &pci);
-    klog("pci: %zu devices%s", pci.count, pci.truncated ? " (truncated)" : "");
+    klog("pci: %zu devices%s, names from pci.ids %s", pci.count, pci.truncated ? " (truncated)" : "",
+         pci_ids.version);
+    for (size_t i = 0; i < pci.count; i++) {
+        const struct pci_device *d = &pci.devices[i];
+        const char *name = pci_db_device(&pci_ids, d->vendor, d->device);
+        klog("pci: %02x:%02x.%x %04x:%04x %s", d->bus, d->dev, d->fn, d->vendor, d->device,
+             name ? name : pci_class_name(d->class_code, d->subclass, d->prog_if));
+    }
     bool dma = pages_init();
     if (cmdline_has(bootinfo.cmdline, "nousb")) {
         usb_sum.disabled = true;

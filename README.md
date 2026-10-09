@@ -16,6 +16,12 @@ ACPI tables, RTC). It boots from one ISO on BIOS and UEFI machines via
 | R, then R again | reboot |
 | S, then S again | shut down (ACPI S5) |
 
+The **PCI** tab lists every PCI function with its class and the vendor and
+device names from a built-in copy of [pci.ids](https://pci-ids.ucw.cz/) (all
+vendors and devices, no subsystems). The same names go to the log at boot. To
+refresh the copy, run `tools/pciids2c.py [path/to/pci.ids]` (default
+`/usr/share/hwdata/pci.ids`); it rewrites `src/info/pci_ids.c`.
+
 The **USB** tab lists each xHCI controller (version, USB 2 and USB 3 port
 counts) and every device that answered on its ports: port, speed, vid:pid,
 class, the product name the device reports, and whether tiny uses it (keyboard,
@@ -121,5 +127,7 @@ Pure modules (formatting, decoding, parsing, paging) are unit-tested on the host
 ## Credits
 
 - Limine bootloader (BSD-2-Clause); `src/limine.h` is 0BSD.
+- PCI vendor and device names come from the PCI ID Repository
+  (https://pci-ids.ucw.cz/), used under its 3-clause BSD license option.
 - The IBM VGA 8x16 font is extracted from QEMU's SeaBIOS VGA BIOS by
   `tools/extract-font.py`.

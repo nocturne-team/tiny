@@ -163,13 +163,19 @@ static void test_pci(void) {
     CHECK_STR(p.title, "PCI");
     CHECK_STR(find_line(&p, "No PCI"), "No PCI devices found");
 
-    l.count = 2;
+    l.count = 4;
     l.devices[0] = (struct pci_device){ 0, 31, 2, 0x8086, 0x2922, 0x01, 0x06, 0x01, 0x02, 0 };
-    l.devices[1] = (struct pci_device){ 5, 0, 0, 0x4242, 0x0001, 0x42, 0x00, 0x00, 0x00, 0 };
+    l.devices[1] = (struct pci_device){ 5, 0, 0, 0x0BAD, 0x0001, 0x42, 0x00, 0x00, 0x00, 0 };
+    l.devices[2] = (struct pci_device){ 6, 0, 0, 0x10B5, 0xFFFE, 0x06, 0x04, 0x00, 0x00, 1 };
+    l.devices[3] = (struct pci_device){ 7, 0, 0, 0x8086, 0xFFFE, 0x02, 0x00, 0x00, 0x00, 0 };
     tab_pci_build(&p, &l);
-    CHECK_STR(find_line(&p, "00:1f.2"), "00:1f.2  8086:2922  SATA controller (AHCI)         Intel");
-    CHECK_STR(find_line(&p, "05:00.0"), "05:00.0  4242:0001  Unknown class                  -");
-    CHECK_STR(find_line(&p, "Devices"), "Devices (2)");
+    CHECK_STR(find_line(&p, "00:1f.2"), "00:1f.2  8086:2922  SATA controller (AHCI)         Intel "
+                                        "82801IR/IO/IH (ICH9R/DO/DH) 6 port SATA Controller [AHCI mode]");
+    CHECK_STR(find_line(&p, "05:00.0"), "05:00.0  0bad:0001  Unknown class                  -");
+    // In pci.ids but not the short-name table: the full vendor name.
+    CHECK_STR(find_line(&p, "06:00.0"), "06:00.0  10b5:fffe  PCI-to-PCI bridge              PLX Technology, Inc.");
+    CHECK_STR(find_line(&p, "07:00.0"), "07:00.0  8086:fffe  Ethernet controller            Intel");
+    CHECK_STR(find_line(&p, "Devices"), "Devices (4)");
 
     l.truncated = true;
     tab_pci_build(&p, &l);
