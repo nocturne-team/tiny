@@ -65,6 +65,7 @@ static bool log_update(struct page *p) {
     return true;
 }
 
+void kmain(void);
 void kmain(void) {
     serial_init();
     klog("tiny: booting");

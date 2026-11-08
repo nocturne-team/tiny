@@ -100,7 +100,7 @@ The `nofarewell` command-line word turns it off; safe mode passes it.
 ## Building
 
 Requirements: `clang`, `ld.lld`, `nasm`, `xorriso`, `git`, `make`, `gcc` (host
-tests), `qemu-system-x86_64` and OVMF (`/usr/share/edk2/OvmfX64`), and Python 3
+tests), `qemu-system-x86_64` and OVMF (auto-detected under `/usr/share/edk2`, or set `OVMF_CODE`/`OVMF_VARS`), and Python 3
 (tools only). On Gentoo: `emerge dev-libs/libisoburn sys-firmware/edk2-bin`.
 
 ```sh

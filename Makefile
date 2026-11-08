@@ -8,20 +8,24 @@ QEMU    := qemu-system-x86_64
 
 BUILD   ?= build
 KDEFS   ?=
+WERROR  ?=
 LIMINE_CONF ?= limine.conf
 
 LIMINE_TAG := v11.4.1-binary
 LIMINE_DIR := limine
-OVMF_DIR   := /usr/share/edk2/OvmfX64
+OVMF_CODE  ?= $(firstword $(wildcard /usr/share/edk2/OvmfX64/OVMF_CODE.fd /usr/share/edk2/x64/OVMF_CODE.4m.fd /usr/share/edk2/x64/OVMF_CODE.fd /usr/share/OVMF/OVMF_CODE.fd))
+OVMF_VARS  ?= $(firstword $(wildcard /usr/share/edk2/OvmfX64/OVMF_VARS.fd /usr/share/edk2/x64/OVMF_VARS.4m.fd /usr/share/edk2/x64/OVMF_VARS.fd /usr/share/OVMF/OVMF_VARS.fd))
+export OVMF_CODE OVMF_VARS
 
 KCFLAGS := --target=x86_64-unknown-none-elf -std=gnu11 -O2 -g -pipe \
-	-Wall -Wextra -Werror=implicit-function-declaration \
+	-Wall -Wextra -Wshadow -Wvla -Wformat=2 -Wstrict-prototypes -Wmissing-prototypes \
+	-Werror=implicit-function-declaration $(if $(WERROR),-Werror) \
 	-ffreestanding -fno-stack-protector -fno-stack-check -fno-PIC \
 	-fno-omit-frame-pointer -mno-red-zone -mcmodel=kernel -mgeneral-regs-only \
 	-Isrc $(KDEFS)
 KLDFLAGS  := -nostdlib -static -z max-page-size=0x1000 -T linker.ld
 NASMFLAGS := -f elf64 -g
-HOSTCFLAGS := -std=gnu11 -O0 -g -Wall -Wextra -Isrc -Itests -fsanitize=address,undefined
+HOSTCFLAGS := -std=gnu11 -O0 -g -Wall -Wextra -Wconversion -Isrc -Itests -fsanitize=address,undefined
 
 CSRCS  := $(shell find src -name '*.c')
 ASRCS  := $(shell find src -name '*.asm')
@@ -31,7 +35,7 @@ ISO    := $(BUILD)/tiny.iso
 
 QEMUFLAGS := -M q35 -m 512M -serial stdio -no-reboot -device qemu-xhci,id=xhci
 
-.PHONY: all iso run run-usb run-uefi shots test smoke clean distclean
+.PHONY: all iso run run-usb run-uefi shots clean-shots test smoke clean distclean help
 all: $(ISO)
 iso: $(ISO)
 
@@ -66,6 +70,20 @@ $(ISO): $(KERNEL) $(LIMINE_CONF) $(LIMINE_DIR)/limine
 		$(BUILD)/iso_root -o $@
 	$(LIMINE_DIR)/limine bios-install $@
 
+help:
+	@echo "make              build $(ISO)"
+	@echo "make run          QEMU, BIOS, serial log on stdout"
+	@echo "make run-uefi     QEMU with OVMF"
+	@echo "make run-usb      QEMU, PS/2 off, USB keyboard on xHCI"
+	@echo "make test         host unit tests (ASan + UBSan)"
+	@echo "make smoke        headless QEMU boots checked against the serial log"
+	@echo "make shots        PNG screenshots of every page into build/shots/"
+	@echo "make clean-shots  delete build/shots/"
+	@echo "WERROR=1          turn compiler warnings into errors"
+
+clean-shots:
+	rm -rf build/shots
+
 run: $(ISO)
 	$(QEMU) $(QEMUFLAGS) -cdrom $(ISO) -boot d
 
@@ -75,11 +93,11 @@ run-usb: $(ISO)
 
 $(BUILD)/ovmf-vars.fd:
 	@mkdir -p $(BUILD)
-	cp $(OVMF_DIR)/OVMF_VARS.fd $@
+	cp $(OVMF_VARS) $@
 
 run-uefi: $(ISO) $(BUILD)/ovmf-vars.fd
 	$(QEMU) $(QEMUFLAGS) \
-		-drive if=pflash,unit=0,format=raw,readonly=on,file=$(OVMF_DIR)/OVMF_CODE.fd \
+		-drive if=pflash,unit=0,format=raw,readonly=on,file=$(OVMF_CODE) \
 		-drive if=pflash,unit=1,format=raw,file=$(BUILD)/ovmf-vars.fd \
 		-cdrom $(ISO) -boot d
 
@@ -197,10 +215,10 @@ build/disks/nvme.img build/disks/sata.img build/disks/usb.img:
 	truncate -s $(if $(findstring nvme,$@),1G,$(if $(findstring usb,$@),64M,10G)) $@
 
 smoke: build/disks/nvme.img build/disks/sata.img build/disks/usb.img
-	$(MAKE) --no-print-directory BUILD=build/smoke KDEFS=-DSMOKE iso
+	$(MAKE) --no-print-directory WERROR=1 BUILD=build/smoke KDEFS=-DSMOKE iso
 	tests/smoke.sh build/smoke/tiny.iso bios ok q35 $(SMOKE_EXPECT)
 	tests/smoke.sh build/smoke/tiny.iso uefi ok q35 $(SMOKE_EXPECT)
-	$(MAKE) --no-print-directory BUILD=build/smoke-panic KDEFS="-DSMOKE -DSMOKE_PANIC" iso
+	$(MAKE) --no-print-directory WERROR=1 BUILD=build/smoke-panic KDEFS="-DSMOKE -DSMOKE_PANIC" iso
 	tests/smoke.sh build/smoke-panic/tiny.iso bios panic
 	tests/smoke.sh build/smoke/tiny.iso bios ok q35,i8042=off "ps2: no controller"
 	QEMU_EXTRA="-device qemu-xhci,id=xhci -device usb-kbd,bus=xhci.0 -device usb-tablet,bus=xhci.0" \
@@ -208,7 +226,7 @@ smoke: build/disks/nvme.img build/disks/sata.img build/disks/usb.img
 		'"QEMU" "QEMU USB Keyboard"'
 	QEMU_EXTRA="-device qemu-xhci,id=xhci -drive if=none,id=u0,format=raw,file=build/disks/usb.img \
 		-device usb-storage,bus=xhci.0,drive=u0" tests/smoke.sh build/smoke/tiny.iso bios ok q35 "class 08, ignored" "QEMU USB HARDDRIVE"
-	tests/smoke.sh build/smoke/tiny.iso bios ok q35,acpi=off "acpi: rev 0"
+	tests/smoke.sh build/smoke/tiny.iso bios ok q35,acpi=off "acpi: \\(rev 0\\|not provided\\)"
 	@if [ -r /dev/kvm ] && [ -w /dev/kvm ]; then \
 		QEMU_EXTRA="-accel kvm -cpu host -device qemu-xhci,id=xhci" tests/smoke.sh build/smoke/tiny.iso bios ok q35 \
 			"msr: invalid MSR faulted, recovered" "sensors: "; \
@@ -219,18 +237,18 @@ smoke: build/disks/nvme.img build/disks/sata.img build/disks/usb.img
 	QEMU_EXTRA="$(DISKS)" tests/smoke.sh build/smoke/tiny.iso uefi ok q35 "storage: NVMe QEMU NVMe Ctrl" "storage: 3 drives"
 	QEMU_EXTRA="-drive if=none,id=n0,format=raw,file=build/disks/nvme.img \
 		-device nvme,drive=n0,serial=NVME0001,smart_critical_warning=4" tests/smoke.sh build/smoke/tiny.iso bios ok q35 "storage: NVMe .* health FAILING"
-	$(MAKE) --no-print-directory BUILD=build/smoke-noacpi KDEFS="-DSMOKE -DSMOKE_NO_ACPI" iso
+	$(MAKE) --no-print-directory WERROR=1 BUILD=build/smoke-noacpi KDEFS="-DSMOKE -DSMOKE_NO_ACPI" iso
 	tests/smoke.sh build/smoke-noacpi/tiny.iso bios ok q35 "acpi: not provided"
-	$(MAKE) --no-print-directory BUILD=build/smoke-off KDEFS="-DSMOKE -DSMOKE_SHUTDOWN" iso
+	$(MAKE) --no-print-directory WERROR=1 BUILD=build/smoke-off KDEFS="-DSMOKE -DSMOKE_SHUTDOWN" iso
 	tests/smoke.sh build/smoke-off/tiny.iso bios shutdown
 	tests/smoke.sh build/smoke-off/tiny.iso uefi shutdown
-	$(MAKE) --no-print-directory BUILD=build/smoke-nousb LIMINE_CONF=tests/limine-nousb.conf KDEFS=-DSMOKE iso
+	$(MAKE) --no-print-directory WERROR=1 BUILD=build/smoke-nousb LIMINE_CONF=tests/limine-nousb.conf KDEFS=-DSMOKE iso
 	QEMU_EXTRA="-device qemu-xhci,id=xhci -device usb-kbd,bus=xhci.0" \
 		tests/smoke.sh build/smoke-nousb/tiny.iso bios ok q35 "usb: disabled by command line" "storage: 1 drive"
-	$(MAKE) --no-print-directory BUILD=build/smoke-safe LIMINE_CONF=tests/limine-safe.conf KDEFS=-DSMOKE iso
+	$(MAKE) --no-print-directory WERROR=1 BUILD=build/smoke-safe LIMINE_CONF=tests/limine-safe.conf KDEFS=-DSMOKE iso
 	QEMU_EXTRA="$(DISKS)" tests/smoke.sh build/smoke-safe/tiny.iso bios ok q35 "usb: disabled by command line" \
 		"storage: disabled by command line" "farewell disabled by command line"
-	$(MAKE) --no-print-directory BUILD=build/smoke-keys KDEFS="-DSMOKE -DSMOKE_KEYS" iso
+	$(MAKE) --no-print-directory WERROR=1 BUILD=build/smoke-keys KDEFS="-DSMOKE -DSMOKE_KEYS" iso
 	$(KEYTEST) -device usb-kbd,bus=xhci.0 -- 'wait:keyboard 0627:' key:f2 'wait:ui: page Devices/PCI'
 	$(KEYTEST) --uefi -device usb-kbd,bus=xhci.0 -- 'wait:keyboard 0627:' key:f2 'wait:ui: page Devices/PCI'
 	$(KEYTEST) -device usb-kbd,bus=xhci.0 -- 'wait:keyboard 0627:' key:f3 'wait:ui: page Live/Sensors'
@@ -266,7 +284,7 @@ smoke: build/disks/nvme.img build/disks/sata.img build/disks/usb.img
 		'count:1:EXTREME DAMAGE SUSTAINED[\s\S]*RUNNING DIAGNOSTIC[\s\S]*ARM CORE MODULE #1[\s\S]*NO VOCAL INTERFACE[\s\S]*(DON.T WANT TO DIE[\s\S]*){3}power: shutting down'
 	$(KEYTEST) -device usb-kbd,bus=xhci.0 --exit=0 -- 'wait:keyboard 0627:' key:r key:r 'wait:power: rebooting' \
 		'count:34:shutdown: ' 'count:0:PANIC'
-	$(MAKE) --no-print-directory BUILD=build/smoke-keys-safe LIMINE_CONF=tests/limine-safe.conf KDEFS="-DSMOKE -DSMOKE_KEYS" iso
+	$(MAKE) --no-print-directory WERROR=1 BUILD=build/smoke-keys-safe LIMINE_CONF=tests/limine-safe.conf KDEFS="-DSMOKE -DSMOKE_KEYS" iso
 	tools/qemu-keytest.py build/smoke-keys-safe/tiny.iso --ps2 --exit=0 -- 'wait:farewell disabled' key:s key:s \
 		'wait:power: ACPI S5' 'count:0:shutdown: '
 	QEMU_EXTRA="-device qemu-xhci,id=xhci -device usb-mouse,bus=xhci.0" \

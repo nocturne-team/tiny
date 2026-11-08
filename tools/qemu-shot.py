@@ -24,8 +24,8 @@ import sys
 import tempfile
 import time
 
-OVMF_CODE = '/usr/share/edk2/OvmfX64/OVMF_CODE.fd'
-OVMF_VARS = '/usr/share/edk2/OvmfX64/OVMF_VARS.fd'
+OVMF_CODE = os.environ.get('OVMF_CODE', '/usr/share/edk2/OvmfX64/OVMF_CODE.fd')
+OVMF_VARS = os.environ.get('OVMF_VARS', '/usr/share/edk2/OvmfX64/OVMF_VARS.fd')
 
 
 class QMP:

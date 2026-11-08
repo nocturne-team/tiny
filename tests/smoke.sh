@@ -11,7 +11,8 @@ iso=$1 fw=$2 expect=$3
 machine=q35
 if [ $# -ge 4 ]; then machine=$4; shift 4; else shift 3; fi
 
-OVMF_DIR=/usr/share/edk2/OvmfX64
+OVMF_CODE=${OVMF_CODE:-/usr/share/edk2/OvmfX64/OVMF_CODE.fd}
+OVMF_VARS=${OVMF_VARS:-/usr/share/edk2/OvmfX64/OVMF_VARS.fd}
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 log=$tmp/serial.log
@@ -19,8 +20,8 @@ log=$tmp/serial.log
 
 fwflags=""
 if [ "$fw" = uefi ]; then
-    cp "$OVMF_DIR/OVMF_VARS.fd" "$tmp/vars.fd"
-    fwflags="-drive if=pflash,unit=0,format=raw,readonly=on,file=$OVMF_DIR/OVMF_CODE.fd -drive if=pflash,unit=1,format=raw,file=$tmp/vars.fd"
+    cp "$OVMF_VARS" "$tmp/vars.fd"
+    fwflags="-drive if=pflash,unit=0,format=raw,readonly=on,file=$OVMF_CODE -drive if=pflash,unit=1,format=raw,file=$tmp/vars.fd"
 fi
 
 # shellcheck disable=SC2086
