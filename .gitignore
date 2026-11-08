@@ -2,3 +2,7 @@ build/
 limine/
 *.iso
 *.elf
+CLAUDE.md
+AGENTS.md
+.claude/
+docs/superpowers/
