@@ -79,6 +79,7 @@ help:
 	@echo "make smoke        headless QEMU boots checked against the serial log"
 	@echo "make shots        PNG screenshots of every page into build/shots/"
 	@echo "make clean-shots  delete build/shots/"
+	@echo "make clean        delete build output (distclean also removes limine/)"
 	@echo "WERROR=1          turn compiler warnings into errors"
 
 clean-shots:
